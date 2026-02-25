@@ -1,103 +1,102 @@
 from flask import Flask, request, jsonify
 import mysql.connector
+from dotenv import load_dotenv
+import os
 
+# ================== CARGA VARIABLES ==================
+load_dotenv()
+
+# ================== APP ==================
 app = Flask(__name__)
 
-# 🔌 MySQL connection
+# ================== CONEXIÓN BD ==================
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="FamiliaGR2025*",
-        database="seed_races"
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME"),
     )
 
-# ✅ Ensure table has columns to store text too (safe: tries once)
-def ensure_schema():
+# ================== HEALTH ==================
+@app.get("/health")
+def health():
+    return jsonify({"ok": True})
+
+# ================== GUARDAR GIRO ==================
+@app.post("/giro")
+def recibir_giro():
+    data = request.get_json(silent=True) or {}
+    valor = data.get("valor")
+
+    if not valor:
+        return jsonify({"error": "valor es requerido"}), 400
+
+    valor = str(valor).strip()
+
+    permitidos = {"1", "2", "3", "4", "5", "Ana", "Deisy", "Diana"}
+    if valor not in permitidos:
+        return jsonify({"error": "valor inválido"}), 400
+
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Add these columns only if they don't exist (MySQL 8 doesn't support IF NOT EXISTS for ADD COLUMN in all setups)
-        # So we do a simple try/except per column.
-        try:
-            cur.execute("ALTER TABLE PRUEBA_RULETA ADD COLUMN Texto_flutter VARCHAR(100) NULL;")
-        except:
-            pass
-
-        try:
-            cur.execute("ALTER TABLE PRUEBA_RULETA ADD COLUMN Tipo VARCHAR(20) NOT NULL DEFAULT 'numero';")
-        except:
-            pass
-
+        cur.execute("INSERT INTO PRUEBA_RULETA (valor_flutter) VALUES (%s)", (valor,))
         conn.commit()
     finally:
         cur.close()
         conn.close()
 
-ensure_schema()
+    return jsonify({"valor_guardado": valor})
 
-@app.get("/health")
-def health():
-    return jsonify({"ok": True})
+# ================== HISTORIAL ==================
 
-# 🧮 NUMBERS: receive number 1..5, multiply by 4, save
-@app.post("/numero")
-def recibir_numero():
-    data = request.get_json(silent=True) or {}
-    numero = data.get("numero")
-
-    if numero is None:
-        return jsonify({"error": "numero is required"}), 400
+@app.get("/historial")
+def ver_historial():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
 
     try:
-        numero = int(numero)
-    except:
-        return jsonify({"error": "numero must be an integer"}), 400
+        cur.execute("SELECT * FROM PRUEBA_RULETA ORDER BY id DESC LIMIT 50")
+        registros = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
 
-    if numero < 1 or numero > 5:
-        return jsonify({"error": "numero must be between 1 and 5"}), 400
+    return jsonify(registros)
 
-    resultado = numero * 4
+# ================== CONTADOR ==================
 
+@app.get("/contador")
+def contar_giros():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO PRUEBA_RULETA (Numero_flutter, Numero_ejecucion, Tipo, Texto_flutter) VALUES (%s, %s, %s, %s)",
-        (numero, resultado, "numero", None)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
 
-    return jsonify({"numero_recibido": numero, "resultado": resultado})
+    try:
+        cur.execute("SELECT COUNT(*) FROM PRUEBA_RULETA")
+        total = cur.fetchone()[0]
+    finally:
+        cur.close()
+        conn.close()
 
-# 🔤 TEXT: receive name (Ana/Daisy/Diana), save
-@app.post("/texto")
-def recibir_texto():
-    data = request.get_json(silent=True) or {}
-    nombre = data.get("nombre")
+    return jsonify({"total_giros": total})
 
-    if not nombre:
-        return jsonify({"error": "nombre is required"}), 400
+# ================== BORRAR HISTORIAL ==================
 
-    nombre = str(nombre).strip()
-
-    allowed = {"Ana", "Daisy", "Diana"}
-    if nombre not in allowed:
-        return jsonify({"error": "nombre must be one of: Ana, Daisy, Diana"}), 400
-
+@app.delete("/historial")
+def borrar_historial():
     conn = get_db_connection()
     cur = conn.cursor()
-    # For text spins: Numero_flutter can be NULL, Numero_ejecucion can be 0
-    cur.execute(
-        "INSERT INTO PRUEBA_RULETA (Numero_flutter, Numero_ejecucion, Tipo, Texto_flutter) VALUES (%s, %s, %s, %s)",
-        (None, 0, "texto", nombre)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
 
-    return jsonify({"nombre_recibido": nombre})
+    try:
+        cur.execute("DELETE FROM PRUEBA_RULETA")
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 
+    return jsonify({"mensaje": "historial eliminado"})
+
+# ================== RUN ==================
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000, debug=True)
