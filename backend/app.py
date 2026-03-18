@@ -154,10 +154,45 @@ def obtener_personajes_filtrados():
         "role": rol,
         "personajes": rows
     })
-# ================== GUARDAR RESULTADO ==================
 
-@app.route("/guardar-resultado", methods=["POST"])
-def guardar_resultado():
+# ================== PREGUNTA RANDOM CON RESPUESTAS ==================
+@app.get("/pregunta-random")
+def obtener_pregunta_random():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        cur.execute("""
+            SELECT id, texto_pregunta
+            FROM pregunta
+            ORDER BY RAND()
+            LIMIT 1
+        """)
+        pregunta = cur.fetchone()
+
+        if not pregunta:
+            return jsonify({"error": "no hay preguntas registradas"}), 404
+
+        cur.execute("""
+            SELECT id, texto_respuesta
+            FROM respuesta
+            WHERE pregunta_id = %s
+            ORDER BY id ASC
+        """, (pregunta["id"],))
+        respuestas = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    return jsonify({
+        "pregunta_id": pregunta["id"],
+        "texto_pregunta": pregunta["texto_pregunta"],
+        "respuestas": respuestas
+    })
+
+# ================== GUARDAR RESULTADO COMPLETO ==================
+@app.route("/guardar-resultado-completo", methods=["POST"])
+def guardar_resultado_completo():
     data = request.get_json(force=False, silent=True) or {}
 
     category = (
@@ -178,9 +213,21 @@ def guardar_resultado():
         or request.args.get("role")
     )
 
-    if not category or not subrace or not role:
+    pregunta_id = (
+        data.get("pregunta_id")
+        or request.form.get("pregunta_id")
+        or request.args.get("pregunta_id")
+    )
+
+    respuesta_id = (
+        data.get("respuesta_id")
+        or request.form.get("respuesta_id")
+        or request.args.get("respuesta_id")
+    )
+
+    if not category or not subrace or not role or not pregunta_id or not respuesta_id:
         return jsonify({
-            "error": "category, subrace y role son requeridos",
+            "error": "category, subrace, role, pregunta_id y respuesta_id son requeridos",
             "data_recibida": data,
             "form_recibido": request.form.to_dict(),
             "args_recibidos": request.args.to_dict()
@@ -191,9 +238,15 @@ def guardar_resultado():
 
     try:
         cur.execute("""
-            INSERT INTO PRUEBA_RULETA (category, subrace, role)
-            VALUES (%s, %s, %s)
-        """, (category, subrace, role))
+            INSERT INTO PRUEBA_RULETA (
+                category,
+                subrace,
+                role,
+                pregunta_id,
+                respuesta_id
+            )
+            VALUES (%s, %s, %s, %s, %s)
+        """, (category, subrace, role, pregunta_id, respuesta_id))
         conn.commit()
     finally:
         cur.close()
@@ -203,9 +256,40 @@ def guardar_resultado():
         "mensaje": "Guardado",
         "category": category,
         "subrace": subrace,
-        "role": role
+        "role": role,
+        "pregunta_id": pregunta_id,
+        "respuesta_id": respuesta_id
     })
 
+# ================== HISTORIAL ==================
+@app.get("/historial")
+def ver_historial():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        cur.execute("""
+            SELECT 
+                pr.id,
+                pr.fecha_completa,
+                pr.category,
+                pr.subrace,
+                pr.role,
+                p.texto_pregunta,
+                r.texto_respuesta
+            FROM PRUEBA_RULETA pr
+            LEFT JOIN pregunta p ON pr.pregunta_id = p.id
+            LEFT JOIN respuesta r ON pr.respuesta_id = r.id
+            ORDER BY pr.id DESC
+            LIMIT 50
+        """)
+        registros = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    return jsonify(registros)
+
 # ================== RUN ==================
-if __name__== "__main__":
+if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000, debug=True)

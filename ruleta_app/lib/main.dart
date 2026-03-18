@@ -31,7 +31,7 @@ class _RuletaPageState extends State<RuletaPage>
   // ================== API ==================
   final String baseUrl = 'http://10.0.2.2:8000';
 
-  // ================== DATOS DRILL DOWN ==================
+  // ================== DRILL DOWN ==================
   List<String> items = [];
   String? categoriaSeleccionada;
   String? subrazaSeleccionada;
@@ -39,6 +39,13 @@ class _RuletaPageState extends State<RuletaPage>
 
   int nivelActual = 0;
   bool cargando = true;
+
+  // ================== PREGUNTA ==================
+  bool mostrandoPregunta = false;
+  int? preguntaId;
+  String preguntaTexto = '';
+  List<Map<String, dynamic>> respuestas = [];
+  int? respuestaSeleccionadaId;
 
   // ================== ANIMACIÓN ==================
   late final AnimationController _controller;
@@ -48,18 +55,16 @@ class _RuletaPageState extends State<RuletaPage>
   double _startAngle = 0.0;
   double _targetAngle = 0.0;
 
-  // ================== ESTADO UI ==================
+  // ================== UI ==================
   bool _girando = false;
   String _resultadoFinal = '-';
   String _resultadoEnVivo = '-';
   String _estado = '';
   int _contadorGiros = 0;
 
-  // ================== MODO CLÁSICO ==================
   bool _modoClasico = false;
   bool _bannerClasico = false;
 
-  // ================== COLORES FONDO ==================
   final List<Color> fondos = const [
     Color(0xFF00B7FF),
     Color(0xFFFF3B30),
@@ -70,7 +75,6 @@ class _RuletaPageState extends State<RuletaPage>
   ];
   Color _fondoActual = const Color(0xFFAF52DE);
 
-  // ================== PUNTERO ==================
   double _punteroWiggle = 0.0;
   int _lastTick = -999;
 
@@ -136,18 +140,21 @@ class _RuletaPageState extends State<RuletaPage>
   // ================== HTTP ==================
   Future<Map<String, dynamic>> _getJson(Uri url) async {
     final res = await http.get(url);
-    final decoded =
-        jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    return decoded;
+    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   }
 
   Future<void> _cargarCategorias() async {
     setState(() {
       cargando = true;
+      mostrandoPregunta = false;
       nivelActual = 0;
       categoriaSeleccionada = null;
       subrazaSeleccionada = null;
       rolSeleccionado = null;
+      preguntaId = null;
+      preguntaTexto = '';
+      respuestas = [];
+      respuestaSeleccionadaId = null;
       _resultadoFinal = '-';
       _resultadoEnVivo = '-';
       _estado = '';
@@ -238,26 +245,64 @@ class _RuletaPageState extends State<RuletaPage>
     }
   }
 
-  Future<void> _guardarResultado() async {
+  Future<void> _cargarPreguntaRandom() async {
+    setState(() {
+      cargando = true;
+      mostrandoPregunta = true;
+      _estado = '';
+    });
+
+    try {
+      final data = await _getJson(Uri.parse('$baseUrl/pregunta-random'));
+
+      setState(() {
+        preguntaId = data['pregunta_id'];
+        preguntaTexto = data['texto_pregunta'] ?? '';
+        respuestas = List<Map<String, dynamic>>.from(data['respuestas'] ?? []);
+        respuestaSeleccionadaId = null;
+        cargando = false;
+      });
+    } catch (_) {
+      setState(() {
+        cargando = false;
+        _estado = 'Error cargando pregunta ❌';
+      });
+    }
+  }
+
+  Future<void> _guardarResultadoCompleto(int respuestaId) async {
     if (categoriaSeleccionada == null ||
         subrazaSeleccionada == null ||
-        rolSeleccionado == null) {
+        rolSeleccionado == null ||
+        preguntaId == null) {
       return;
     }
 
     try {
       final res = await http.post(
-        Uri.parse('$baseUrl/guardar-resultado'),
+        Uri.parse('$baseUrl/guardar-resultado-completo'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'category': categoriaSeleccionada,
           'subrace': subrazaSeleccionada,
           'role': rolSeleccionado,
+          'pregunta_id': preguntaId,
+          'respuesta_id': respuestaId,
         }),
       );
 
       if (res.statusCode == 200) {
-        if (mounted) setState(() => _estado = 'Guardado ✅');
+        if (mounted) {
+          setState(() {
+            respuestaSeleccionadaId = respuestaId;
+            _estado = 'Guardado ✅';
+          });
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          _resetTotal();
+        }
       } else {
         if (mounted) setState(() => _estado = 'Error guardando ❌');
       }
@@ -282,12 +327,12 @@ class _RuletaPageState extends State<RuletaPage>
 
     if (nivelActual == 2) {
       rolSeleccionado = selected;
-      await _guardarResultado();
+      await _cargarPreguntaRandom();
       return;
     }
   }
 
-  // ================== LÓGICA RESULTADO ==================
+  // ================== RUEDA ==================
   int _pickIndexUnderPointer(double ang) {
     const pointer = -pi / 2;
     int best = 0;
@@ -315,7 +360,7 @@ class _RuletaPageState extends State<RuletaPage>
     return d > pi ? 2 * pi - d : d;
   }
 
-  // ================== EFECTOS UI ==================
+  // ================== EFECTOS ==================
   void _cambiarFondo() {
     final next = fondos[_rand.nextInt(fondos.length)];
     setState(() => _fondoActual = next);
@@ -329,15 +374,15 @@ class _RuletaPageState extends State<RuletaPage>
 
   void _hacerTickPuntero() {
     if (!_girando) return;
-    setState(() => _punteroWiggle = -0.25);
-    Future<void>.delayed(const Duration(milliseconds: 60), () {
+    setState(() => _punteroWiggle = -0.18);
+    Future<void>.delayed(const Duration(milliseconds: 55), () {
       if (mounted) setState(() => _punteroWiggle = 0.0);
     });
   }
 
   // ================== ACCIONES ==================
   Future<void> _spin() async {
-    if (_girando || cargando || items.isEmpty) return;
+    if (_girando || cargando || items.isEmpty || mostrandoPregunta) return;
 
     _cambiarFondo();
 
@@ -378,16 +423,16 @@ class _RuletaPageState extends State<RuletaPage>
   }
 
   String _tituloNivel() {
+    if (mostrandoPregunta) return 'RESPONDE LA PREGUNTA';
     if (nivelActual == 0) return 'GIRAR CATEGORÍA';
     if (nivelActual == 1) return 'GIRAR SUBRAZA';
     return 'GIRAR ROL';
   }
 
-  // ================== UI ==================
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final wheelSize = min(w * 0.78, 360.0);
+    final wheelSize = min(w * 0.76, 340.0);
 
     final bg = _modoClasico ? Colors.white : _fondoActual;
     final titleColor = _modoClasico ? Colors.black : Colors.white;
@@ -418,165 +463,194 @@ class _RuletaPageState extends State<RuletaPage>
                 alignment: Alignment.topCenter,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                  child: Column(
-                    children: [
-                      Text(
-                        'RULETA CÓMIC',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: titleColor,
-                          letterSpacing: 1.0,
-                          shadows: _modoClasico
-                              ? null
-                              : const [
-                                  Shadow(
-                                    offset: Offset(3, 3),
-                                    blurRadius: 0,
-                                    color: Colors.black,
-                                  ),
-                                  Shadow(
-                                    offset: Offset(-3, 3),
-                                    blurRadius: 0,
-                                    color: Colors.black,
-                                  ),
-                                  Shadow(
-                                    offset: Offset(3, -3),
-                                    blurRadius: 0,
-                                    color: Colors.black,
-                                  ),
-                                  Shadow(
-                                    offset: Offset(-3, -3),
-                                    blurRadius: 0,
-                                    color: Colors.black,
-                                  ),
-                                ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _InfoCardComic(
-                              titulo: 'CATEGORÍA',
-                              valor: categoriaSeleccionada ?? '-',
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        if (!mostrandoPregunta) ...[
+                          Text(
+                            'RULETA CÓMIC',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              color: titleColor,
+                              letterSpacing: 1.0,
+                              shadows: _modoClasico
+                                  ? null
+                                  : const [
+                                      Shadow(
+                                        offset: Offset(3, 3),
+                                        blurRadius: 0,
+                                        color: Colors.black,
+                                      ),
+                                      Shadow(
+                                        offset: Offset(-3, 3),
+                                        blurRadius: 0,
+                                        color: Colors.black,
+                                      ),
+                                      Shadow(
+                                        offset: Offset(3, -3),
+                                        blurRadius: 0,
+                                        color: Colors.black,
+                                      ),
+                                      Shadow(
+                                        offset: Offset(-3, -3),
+                                        blurRadius: 0,
+                                        color: Colors.black,
+                                      ),
+                                    ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _InfoCardComic(
-                              titulo: 'SUBRAZA',
-                              valor: subrazaSeleccionada ?? '-',
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _InfoCardComic(
-                              titulo: 'ROL',
-                              valor: rolSeleccionado ?? '-',
-                            ),
-                          ),
-                        ],
-                      ),
 
-                      const SizedBox(height: 12),
+                          const SizedBox(height: 10),
 
-                      Text(
-                        _tituloNivel(),
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: titleColor,
-                          letterSpacing: 1.0,
-                          shadows: _modoClasico
-                              ? null
-                              : const [
-                                  Shadow(
-                                    offset: Offset(2, 2),
-                                    blurRadius: 0,
-                                    color: Colors.black,
-                                  ),
-                                ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      SizedBox(
-                        width: wheelSize + 60,
-                        height: wheelSize + 70,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          alignment: Alignment.center,
-                          children: [
-                            if (cargando)
-                              SizedBox(
-                                width: wheelSize,
-                                height: wheelSize,
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    color: _modoClasico
-                                        ? Colors.black
-                                        : Colors.white,
-                                  ),
-                                ),
-                              )
-                            else
-                              Transform.rotate(
-                                angle: _angle,
-                                child: CustomPaint(
-                                  size: Size(wheelSize, wheelSize),
-                                  painter: _WheelComicPainter(
-                                    items: items,
-                                    modoClasico: _modoClasico,
-                                  ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _InfoCardComic(
+                                  titulo: 'CATEGORÍA',
+                                  valor: categoriaSeleccionada ?? '-',
                                 ),
                               ),
-                            Positioned(
-                              top: 14,
-                              child: Transform.rotate(
-                                angle: _punteroWiggle,
-                                child: CustomPaint(
-                                  size: const Size(64, 46),
-                                  painter: _PointerComicPainter(),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _InfoCardComic(
+                                  titulo: 'SUBRAZA',
+                                  valor: subrazaSeleccionada ?? '-',
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _ComicButton(
-                              text: 'GIRAR',
-                              variant: _ButtonVariant.blanco,
-                              disabled: _girando || cargando || items.isEmpty,
-                              onTap: _spin,
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _InfoCardComic(
+                                  titulo: 'ROL',
+                                  valor: rolSeleccionado ?? '-',
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _ComicButton(
-                              text: 'REINICIAR',
-                              variant: _ButtonVariant.negro,
-                              disabled: _girando,
-                              onTap: _resetTotal,
-                            ),
-                          ),
+
+                          const SizedBox(height: 12),
                         ],
-                      ),
 
-                      const SizedBox(height: 12),
+                        Text(
+                          _tituloNivel(),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: titleColor,
+                            letterSpacing: 1.0,
+                            shadows: _modoClasico || mostrandoPregunta
+                                ? null
+                                : const [
+                                    Shadow(
+                                      offset: Offset(2, 2),
+                                      blurRadius: 0,
+                                      color: Colors.black,
+                                    ),
+                                  ],
+                          ),
+                        ),
 
-                      _ResultadoComic(valor: valorMostrado, estado: _estado),
-                    ],
+                        const SizedBox(height: 8),
+
+                        if (!mostrandoPregunta) ...[
+                          SizedBox(
+                            width: wheelSize + 60,
+                            height: wheelSize + 70,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.center,
+                              children: [
+                                if (cargando)
+                                  SizedBox(
+                                    width: wheelSize,
+                                    height: wheelSize,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: _modoClasico
+                                            ? Colors.black
+                                            : Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Transform.rotate(
+                                    angle: _angle,
+                                    child: CustomPaint(
+                                      size: Size(wheelSize, wheelSize),
+                                      painter: _WheelComicPainter(
+                                        items: items,
+                                        modoClasico: _modoClasico,
+                                      ),
+                                    ),
+                                  ),
+                                Positioned(
+                                  top: 14,
+                                  child: Transform.rotate(
+                                    angle: _punteroWiggle,
+                                    child: CustomPaint(
+                                      size: const Size(64, 46),
+                                      painter: _PointerComicPainter(),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _ComicButton(
+                                  text: 'GIRAR',
+                                  variant: _ButtonVariant.blanco,
+                                  disabled:
+                                      _girando || cargando || items.isEmpty,
+                                  onTap: _spin,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _ComicButton(
+                                  text: 'REINICIAR',
+                                  variant: _ButtonVariant.negro,
+                                  disabled: _girando,
+                                  onTap: _resetTotal,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _ResultadoComic(
+                            valor: valorMostrado,
+                            estado: _estado,
+                          ),
+                        ] else ...[
+                          const SizedBox(height: 10),
+                          _QuestionBubbleComic(texto: preguntaTexto),
+                          const SizedBox(height: 14),
+                          Column(
+                            children: respuestas.map((r) {
+                              final id = r['id'] as int;
+                              final texto = r['texto_respuesta'] as String;
+                              final selected = respuestaSeleccionadaId == id;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _AnswerOptionComic(
+                                  texto: texto,
+                                  selected: selected,
+                                  onTap: () => _guardarResultadoCompleto(id),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          if (_estado.isNotEmpty)
+                            _MiniStatusComic(texto: _estado),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -588,7 +662,7 @@ class _RuletaPageState extends State<RuletaPage>
   }
 }
 
-// ================== BOTÓN CÓMIC ==================
+// ================== BOTÓN ==================
 
 enum _ButtonVariant { blanco, negro }
 
@@ -607,8 +681,8 @@ class _ComicButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = (variant == _ButtonVariant.blanco) ? Colors.white : Colors.black;
-    final fg = (variant == _ButtonVariant.blanco)
+    final bg = variant == _ButtonVariant.blanco ? Colors.white : Colors.black;
+    final fg = variant == _ButtonVariant.blanco
         ? const Color(0xFF111111)
         : Colors.white;
 
@@ -634,11 +708,12 @@ class _ComicButton extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             text,
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: fg,
               fontSize: 18,
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.4,
+              letterSpacing: 1.2,
             ),
           ),
         ),
@@ -703,7 +778,7 @@ class _InfoCardComic extends StatelessWidget {
   }
 }
 
-// ================== RESULTADO CÓMIC ==================
+// ================== RESULTADO ==================
 
 class _ResultadoComic extends StatelessWidget {
   final String valor;
@@ -745,7 +820,7 @@ class _ResultadoComic extends StatelessWidget {
               style: const TextStyle(
                 color: Colors.black,
                 fontWeight: FontWeight.w900,
-                fontSize: 28,
+                fontSize: 26,
                 height: 1,
               ),
             ),
@@ -766,7 +841,112 @@ class _ResultadoComic extends StatelessWidget {
   }
 }
 
-// ================== BANNER CÓMIC ==================
+// ================== PREGUNTA ==================
+
+class _QuestionBubbleComic extends StatelessWidget {
+  final String texto;
+
+  const _QuestionBubbleComic({required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _BubbleTailPainter(),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.black, width: 5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(5, 5)),
+          ],
+        ),
+        child: Text(
+          texto,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+            height: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnswerOptionComic extends StatelessWidget {
+  final String texto;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AnswerOptionComic({
+    required this.texto,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 56),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFFFD60A) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black, width: 5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
+          ],
+        ),
+        child: Text(
+          texto,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            height: 1.15,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniStatusComic extends StatelessWidget {
+  final String texto;
+
+  const _MiniStatusComic({required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black, width: 4),
+      ),
+      child: Text(
+        texto,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+// ================== BANNER ==================
 
 class _BannerComic extends StatelessWidget {
   final String text;
@@ -797,10 +977,11 @@ class _BannerComic extends StatelessWidget {
   }
 }
 
-// ================== FONDO PUNTOS ==================
+// ================== FONDO ==================
 
 class _ComicDotsBackground extends StatelessWidget {
   final bool modoClasico;
+
   const _ComicDotsBackground({required this.modoClasico});
 
   @override
@@ -875,67 +1056,39 @@ class _WheelComicPainter extends CustomPainter {
         col = Color.fromARGB(255, g, g, g);
       }
 
-      final paint = Paint()..color = col;
-      canvas.drawArc(rect, start, slice, true, paint);
+      final fillPaint = Paint()..color = col;
+      canvas.drawArc(rect, start, slice, true, fillPaint);
 
       final border = Paint()
         ..color = Colors.black
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 5;
+        ..strokeWidth = 2.2;
       canvas.drawArc(rect, start, slice, true, border);
 
       final angle = start + slice / 2;
-      final label = items[i].length > 12
-          ? '${items[i].substring(0, 12)}…'
-          : items[i];
+      final label = items[i];
 
       final tp = TextPainter(
         text: TextSpan(
           text: label,
           style: TextStyle(
-            fontSize: 16,
+            fontSize: _fontSizeForText(label),
             fontWeight: FontWeight.w900,
-            color: Colors.white,
-            shadows: modoClasico
-                ? null
-                : const [
-                    Shadow(
-                      offset: Offset(2, 2),
-                      blurRadius: 0,
-                      color: Colors.black,
-                    ),
-                    Shadow(
-                      offset: Offset(-2, 2),
-                      blurRadius: 0,
-                      color: Colors.black,
-                    ),
-                    Shadow(
-                      offset: Offset(2, -2),
-                      blurRadius: 0,
-                      color: Colors.black,
-                    ),
-                    Shadow(
-                      offset: Offset(-2, -2),
-                      blurRadius: 0,
-                      color: Colors.black,
-                    ),
-                  ],
+            color: modoClasico ? Colors.white : Colors.black,
           ),
         ),
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
-      )..layout(maxWidth: r * 0.9);
+      )..layout(maxWidth: r * 0.52);
 
-      final pos = Offset(
-        c.dx + cos(angle) * (r * 0.60) - tp.width / 2,
-        c.dy + sin(angle) * (r * 0.60) - tp.height / 2,
-      );
+      final radiusText = r * 0.63;
+      final centerX = c.dx + cos(angle) * radiusText;
+      final centerY = c.dy + sin(angle) * radiusText;
 
       canvas.save();
-      canvas.translate(pos.dx + tp.width / 2, pos.dy + tp.height / 2);
-      canvas.rotate(angle + pi / 2);
-      canvas.translate(-(pos.dx + tp.width / 2), -(pos.dy + tp.height / 2));
-      tp.paint(canvas, pos);
+      canvas.translate(centerX, centerY);
+      canvas.rotate(angle);
+      tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
       canvas.restore();
     }
 
@@ -943,13 +1096,13 @@ class _WheelComicPainter extends CustomPainter {
 
     final ringOuter = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = r * 0.09
+      ..strokeWidth = r * 0.08
       ..color = ringColor;
     canvas.drawCircle(c, r * 0.97, ringOuter);
 
     final ringOuterBorder = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
+      ..strokeWidth = 5
       ..color = Colors.black;
     canvas.drawCircle(c, r * 0.97, ringOuterBorder);
 
@@ -958,9 +1111,16 @@ class _WheelComicPainter extends CustomPainter {
 
     final centerBorder = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
+      ..strokeWidth = 5
       ..color = Colors.black;
     canvas.drawCircle(c, r * 0.14, centerBorder);
+  }
+
+  double _fontSizeForText(String text) {
+    if (text.length <= 8) return 15;
+    if (text.length <= 12) return 13;
+    if (text.length <= 18) return 11.5;
+    return 10;
   }
 
   @override
@@ -971,25 +1131,60 @@ class _WheelComicPainter extends CustomPainter {
 
 class _DotsPainter extends CustomPainter {
   final bool modoClasico;
+
   _DotsPainter({required this.modoClasico});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = modoClasico
-          ? Colors.black.withOpacity(0.10)
-          : Colors.black.withOpacity(0.18);
-
     const step = 18.0;
+    final center = Offset(size.width / 2, size.height / 2.2);
+    final maxDist = sqrt(size.width * size.width + size.height * size.height);
 
     for (double y = 0; y < size.height; y += step) {
       for (double x = 0; x < size.width; x += step) {
-        canvas.drawCircle(Offset(x, y), 2.2, p);
+        final p = Offset(x, y);
+        final dist = (p - center).distance;
+        final norm = (dist / maxDist).clamp(0.0, 1.0);
+
+        if (dist < 150) continue;
+
+        final alpha = modoClasico
+            ? (0.22 * norm).clamp(0.0, 0.22)
+            : (0.30 * norm).clamp(0.0, 0.30);
+
+        final paint = Paint()..color = Colors.black.withOpacity(alpha);
+
+        final radius = 1.0 + (1.6 * norm);
+        canvas.drawCircle(p, radius, paint);
       }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _DotsPainter oldDelegate) =>
-      oldDelegate.modoClasico != modoClasico;
+  bool shouldRepaint(covariant _DotsPainter oldDelegate) {
+    return oldDelegate.modoClasico != modoClasico;
+  }
+}
+
+class _BubbleTailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final fill = Paint()..color = Colors.white;
+    final stroke = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5;
+
+    final path = Path()
+      ..moveTo(size.width * 0.18, size.height)
+      ..lineTo(size.width * 0.24, size.height + 16)
+      ..lineTo(size.width * 0.30, size.height)
+      ..close();
+
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
