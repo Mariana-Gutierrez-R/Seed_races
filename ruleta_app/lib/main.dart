@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -202,7 +201,6 @@ class _RuletaPageState extends State<RuletaPage>
         cargando = false;
         if (items.isNotEmpty) {
           _resultadoEnVivo = items.first;
-          _resultadoFinal = items.first;
         }
       });
     } catch (_) {
@@ -234,7 +232,6 @@ class _RuletaPageState extends State<RuletaPage>
         cargando = false;
         if (items.isNotEmpty) {
           _resultadoEnVivo = items.first;
-          _resultadoFinal = items.first;
         }
       });
     } catch (_) {
@@ -267,6 +264,20 @@ class _RuletaPageState extends State<RuletaPage>
         cargando = false;
         _estado = 'Error cargando pregunta ❌';
       });
+    }
+  }
+
+  Future<String?> _decidirSiguienteEvento() async {
+    try {
+      final data = await _getJson(Uri.parse('$baseUrl/decidir-evento'));
+      return data['siguiente'] as String?;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _estado = 'Error decidiendo siguiente evento ❌';
+        });
+      }
+      return null;
     }
   }
 
@@ -327,14 +338,34 @@ class _RuletaPageState extends State<RuletaPage>
 
     if (nivelActual == 2) {
       rolSeleccionado = selected;
-      await _cargarPreguntaRandom();
-      return;
+
+      final siguiente = await _decidirSiguienteEvento();
+
+      if (siguiente == 'pregunta') {
+        await _cargarPreguntaRandom();
+        return;
+      }
+
+      if (siguiente == 'ruleta') {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+
+        if (mounted) {
+          _resetTotal();
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _estado = 'No se pudo decidir el siguiente evento ❌';
+        });
+      }
     }
   }
 
   // ================== RUEDA ==================
   int _pickIndexUnderPointer(double ang) {
-    const pointer = -pi / 2;
+    const pointer = 0.0;
     int best = 0;
     double bestDist = 1e9;
 
@@ -447,7 +478,6 @@ class _RuletaPageState extends State<RuletaPage>
               Positioned.fill(
                 child: _ComicDotsBackground(modoClasico: _modoClasico),
               ),
-
               Positioned(
                 top: 10,
                 left: 16,
@@ -458,7 +488,6 @@ class _RuletaPageState extends State<RuletaPage>
                   child: const _BannerComic(text: 'MODO CLÁSICO ACTIVADO'),
                 ),
               ),
-
               Align(
                 alignment: Alignment.topCenter,
                 child: Padding(
@@ -501,9 +530,7 @@ class _RuletaPageState extends State<RuletaPage>
                                     ],
                             ),
                           ),
-
                           const SizedBox(height: 10),
-
                           Row(
                             children: [
                               Expanded(
@@ -528,10 +555,8 @@ class _RuletaPageState extends State<RuletaPage>
                               ),
                             ],
                           ),
-
                           const SizedBox(height: 12),
                         ],
-
                         Text(
                           _tituloNivel(),
                           style: TextStyle(
@@ -550,9 +575,7 @@ class _RuletaPageState extends State<RuletaPage>
                                   ],
                           ),
                         ),
-
                         const SizedBox(height: 8),
-
                         if (!mostrandoPregunta) ...[
                           SizedBox(
                             width: wheelSize + 60,
@@ -585,9 +608,9 @@ class _RuletaPageState extends State<RuletaPage>
                                     ),
                                   ),
                                 Positioned(
-                                  top: 14,
+                                  right: 2,
                                   child: Transform.rotate(
-                                    angle: _punteroWiggle,
+                                    angle: (pi / 2) + _punteroWiggle,
                                     child: CustomPaint(
                                       size: const Size(64, 46),
                                       painter: _PointerComicPainter(),
@@ -1040,9 +1063,9 @@ class _WheelComicPainter extends CustomPainter {
       const Color(0xFFFF3B30),
       const Color(0xFF34C759),
       const Color(0xFF00B7FF),
-      const Color(0xFFAF52DE),
+      const Color(0xFF6A0DAD),
       const Color(0xFFFF9500),
-      const Color(0xFF1C1C1E),
+      const Color(0xFFFFB6C1),
       const Color(0xFFFFFFFF),
     ];
 
@@ -1136,25 +1159,55 @@ class _DotsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const step = 18.0;
-    final center = Offset(size.width / 2, size.height / 2.2);
-    final maxDist = sqrt(size.width * size.width + size.height * size.height);
+    const step = 12.0;
+    const clearRadius = 190.0;
+    const fadeRadius = 360.0;
+
+    final center = Offset(size.width / 2, size.height * 0.43);
+
+    final corners = <Offset>[
+      const Offset(0, 0),
+      Offset(size.width, 0),
+      Offset(0, size.height),
+      Offset(size.width, size.height),
+    ];
 
     for (double y = 0; y < size.height; y += step) {
       for (double x = 0; x < size.width; x += step) {
         final p = Offset(x, y);
-        final dist = (p - center).distance;
-        final norm = (dist / maxDist).clamp(0.0, 1.0);
+        final distToWheel = (p - center).distance;
 
-        if (dist < 150) continue;
+        if (distToWheel <= clearRadius) continue;
 
-        final alpha = modoClasico
-            ? (0.22 * norm).clamp(0.0, 0.22)
-            : (0.30 * norm).clamp(0.0, 0.30);
+        double cornerStrength = 0.0;
+        for (final c in corners) {
+          final d = (p - c).distance;
+          final influence = (1.0 - (d / (size.longestSide * 0.95))).clamp(
+            0.0,
+            1.0,
+          );
+          if (influence > cornerStrength) {
+            cornerStrength = influence;
+          }
+        }
 
-        final paint = Paint()..color = Colors.black.withOpacity(alpha);
+        final fadeToWheel =
+            ((distToWheel - clearRadius) / (fadeRadius - clearRadius)).clamp(
+              0.0,
+              1.0,
+            );
 
-        final radius = 1.0 + (1.6 * norm);
+        final strength = (cornerStrength * fadeToWheel).clamp(0.0, 1.0);
+
+        if (strength < 0.05) continue;
+
+        final opacity = modoClasico
+            ? (0.10 + 0.22 * strength).clamp(0.0, 0.30)
+            : (0.14 + 0.34 * strength).clamp(0.0, 0.46);
+
+        final radius = 1.0 + (3.4 * strength);
+
+        final paint = Paint()..color = Colors.black.withOpacity(opacity);
         canvas.drawCircle(p, radius, paint);
       }
     }

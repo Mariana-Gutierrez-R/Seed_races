@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import mysql.connector
 from dotenv import load_dotenv
 import os
+import random
 
 # ================== CARGA VARIABLES ==================
 load_dotenv()
@@ -17,6 +18,59 @@ def get_db_connection():
         password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME")
     )
+
+# ================== FUNCIONES CONTROL JUEGO ==================
+def obtener_control_juego():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        cur.execute("""
+            SELECT id_control, preguntas_restantes, ultimo_evento
+            FROM control_juego
+            ORDER BY id_control ASC
+            LIMIT 1
+        """)
+        control = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    return control
+
+
+def actualizar_control_juego(id_control, preguntas_restantes, ultimo_evento):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            UPDATE control_juego
+            SET preguntas_restantes = %s,
+                ultimo_evento = %s,
+                fecha_actualizacion = CURRENT_TIMESTAMP
+            WHERE id_control = %s
+        """, (preguntas_restantes, ultimo_evento, id_control))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def decidir_siguiente_evento(control):
+    preguntas_restantes = control["preguntas_restantes"]
+    ultimo_evento = control["ultimo_evento"]
+
+    if preguntas_restantes <= 0:
+        return "ruleta"
+
+    if ultimo_evento == "ninguno":
+        return "ruleta"
+
+    if ultimo_evento == "pregunta":
+        return "ruleta"
+
+    return random.choice(["ruleta", "pregunta"])
 
 # ================== HEALTH ==================
 @app.get("/health")
@@ -155,7 +209,7 @@ def obtener_personajes_filtrados():
         "personajes": rows
     })
 
-# ================== PREGUNTA RANDOM CON RESPUESTAS ==================
+# ================== PREGUNTA RANDOM ==================
 @app.get("/pregunta-random")
 def obtener_pregunta_random():
     conn = get_db_connection()
@@ -190,48 +244,45 @@ def obtener_pregunta_random():
         "respuestas": respuestas
     })
 
-# ================== GUARDAR RESULTADO COMPLETO ==================
+# ================== DECIDIR EVENTO ==================
+@app.get("/decidir-evento")
+def decidir_evento():
+    control = obtener_control_juego()
+
+    if not control:
+        return jsonify({"error": "no existe control_juego"}), 404
+
+    siguiente = decidir_siguiente_evento(control)
+
+    preguntas_restantes = control["preguntas_restantes"]
+
+    if siguiente == "pregunta":
+        preguntas_restantes -= 1
+
+    actualizar_control_juego(
+        id_control=control["id_control"],
+        preguntas_restantes=preguntas_restantes,
+        ultimo_evento=siguiente
+    )
+
+    return jsonify({
+        "siguiente": siguiente,
+        "preguntas_restantes": preguntas_restantes
+    })
+
+# ================== GUARDAR RESULTADO ==================
 @app.route("/guardar-resultado-completo", methods=["POST"])
 def guardar_resultado_completo():
     data = request.get_json(force=False, silent=True) or {}
 
-    category = (
-        data.get("category")
-        or request.form.get("category")
-        or request.args.get("category")
-    )
-
-    subrace = (
-        data.get("subrace")
-        or request.form.get("subrace")
-        or request.args.get("subrace")
-    )
-
-    role = (
-        data.get("role")
-        or request.form.get("role")
-        or request.args.get("role")
-    )
-
-    pregunta_id = (
-        data.get("pregunta_id")
-        or request.form.get("pregunta_id")
-        or request.args.get("pregunta_id")
-    )
-
-    respuesta_id = (
-        data.get("respuesta_id")
-        or request.form.get("respuesta_id")
-        or request.args.get("respuesta_id")
-    )
+    category = data.get("category")
+    subrace = data.get("subrace")
+    role = data.get("role")
+    pregunta_id = data.get("pregunta_id")
+    respuesta_id = data.get("respuesta_id")
 
     if not category or not subrace or not role or not pregunta_id or not respuesta_id:
-        return jsonify({
-            "error": "category, subrace, role, pregunta_id y respuesta_id son requeridos",
-            "data_recibida": data,
-            "form_recibido": request.form.to_dict(),
-            "args_recibidos": request.args.to_dict()
-        }), 400
+        return jsonify({"error": "faltan datos"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -252,14 +303,7 @@ def guardar_resultado_completo():
         cur.close()
         conn.close()
 
-    return jsonify({
-        "mensaje": "Guardado",
-        "category": category,
-        "subrace": subrace,
-        "role": role,
-        "pregunta_id": pregunta_id,
-        "respuesta_id": respuesta_id
-    })
+    return jsonify({"mensaje": "Guardado OK"})
 
 # ================== HISTORIAL ==================
 @app.get("/historial")
