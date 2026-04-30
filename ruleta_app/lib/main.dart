@@ -56,6 +56,7 @@ class _RuletaPageState extends State<RuletaPage>
 
   // ================== UI ==================
   bool _girando = false;
+  bool _procesandoFlujo = false;
   String _resultadoFinal = '-';
   String _resultadoEnVivo = '-';
   String _estado = '';
@@ -99,7 +100,7 @@ class _RuletaPageState extends State<RuletaPage>
         _hacerTickPuntero();
       }
 
-      if (items.isNotEmpty) {
+      if (items.isNotEmpty && mounted) {
         setState(() {
           _angle = ang;
           _resultadoEnVivo = items[_pickIndexUnderPointer(ang)];
@@ -112,11 +113,13 @@ class _RuletaPageState extends State<RuletaPage>
         final idx = _pickIndexUnderPointer(_angle);
         final selected = items[idx];
 
-        setState(() {
-          _girando = false;
-          _resultadoFinal = selected;
-          _estado = '';
-        });
+        if (mounted) {
+          setState(() {
+            _girando = false;
+            _resultadoFinal = selected;
+            _estado = '';
+          });
+        }
 
         await _procesarSeleccion(selected);
 
@@ -127,7 +130,9 @@ class _RuletaPageState extends State<RuletaPage>
       }
     });
 
-    _cargarCategorias();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _cargarCategorias();
+    });
   }
 
   @override
@@ -138,11 +143,38 @@ class _RuletaPageState extends State<RuletaPage>
 
   // ================== HTTP ==================
   Future<Map<String, dynamic>> _getJson(Uri url) async {
-    final res = await http.get(url);
+    final res = await http.get(url).timeout(const Duration(seconds: 5));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+
+    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> _postJson(
+    Uri url, {
+    Map<String, dynamic>? body,
+  }) async {
+    final res = await http
+        .post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: body == null ? null : jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 5));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+
+    if (res.body.isEmpty) return {};
     return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   }
 
   Future<void> _cargarCategorias() async {
+    if (!mounted) return;
+
     setState(() {
       cargando = true;
       mostrandoPregunta = false;
@@ -163,6 +195,7 @@ class _RuletaPageState extends State<RuletaPage>
       final data = await _getJson(Uri.parse('$baseUrl/categorias'));
       final categorias = List<String>.from(data['categorias'] ?? []);
 
+      if (!mounted) return;
       setState(() {
         items = categorias;
         cargando = false;
@@ -172,6 +205,7 @@ class _RuletaPageState extends State<RuletaPage>
         }
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         cargando = false;
         _estado = 'Error cargando categorías ❌';
@@ -180,6 +214,8 @@ class _RuletaPageState extends State<RuletaPage>
   }
 
   Future<void> _cargarSubrazas(String category) async {
+    if (!mounted) return;
+
     setState(() {
       cargando = true;
       nivelActual = 1;
@@ -196,14 +232,20 @@ class _RuletaPageState extends State<RuletaPage>
       final data = await _getJson(url);
       final subrazas = List<String>.from(data['subrazas'] ?? []);
 
+      if (!mounted) return;
       setState(() {
         items = subrazas;
         cargando = false;
         if (items.isNotEmpty) {
           _resultadoEnVivo = items.first;
+          _resultadoFinal = items.first;
+        } else {
+          _resultadoEnVivo = '-';
+          _resultadoFinal = '-';
         }
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         cargando = false;
         _estado = 'Error cargando subrazas ❌';
@@ -212,6 +254,8 @@ class _RuletaPageState extends State<RuletaPage>
   }
 
   Future<void> _cargarRoles(String category, String subrace) async {
+    if (!mounted) return;
+
     setState(() {
       cargando = true;
       nivelActual = 2;
@@ -227,14 +271,20 @@ class _RuletaPageState extends State<RuletaPage>
       final data = await _getJson(url);
       final roles = List<String>.from(data['roles'] ?? []);
 
+      if (!mounted) return;
       setState(() {
         items = roles;
         cargando = false;
         if (items.isNotEmpty) {
           _resultadoEnVivo = items.first;
+          _resultadoFinal = items.first;
+        } else {
+          _resultadoEnVivo = '-';
+          _resultadoFinal = '-';
         }
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         cargando = false;
         _estado = 'Error cargando roles ❌';
@@ -243,6 +293,8 @@ class _RuletaPageState extends State<RuletaPage>
   }
 
   Future<void> _cargarPreguntaRandom() async {
+    if (!mounted) return;
+
     setState(() {
       cargando = true;
       mostrandoPregunta = true;
@@ -252,6 +304,7 @@ class _RuletaPageState extends State<RuletaPage>
     try {
       final data = await _getJson(Uri.parse('$baseUrl/pregunta-random'));
 
+      if (!mounted) return;
       setState(() {
         preguntaId = data['pregunta_id'];
         preguntaTexto = data['texto_pregunta'] ?? '';
@@ -260,8 +313,10 @@ class _RuletaPageState extends State<RuletaPage>
         cargando = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         cargando = false;
+        mostrandoPregunta = false;
         _estado = 'Error cargando pregunta ❌';
       });
     }
@@ -285,45 +340,60 @@ class _RuletaPageState extends State<RuletaPage>
     if (categoriaSeleccionada == null ||
         subrazaSeleccionada == null ||
         rolSeleccionado == null ||
-        preguntaId == null) {
+        preguntaId == null ||
+        _procesandoFlujo) {
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _procesandoFlujo = true;
+        _estado = 'Guardando...';
+      });
+    }
+
     try {
-      final res = await http.post(
+      await _postJson(
         Uri.parse('$baseUrl/guardar-resultado-completo'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+        body: {
           'category': categoriaSeleccionada,
           'subrace': subrazaSeleccionada,
           'role': rolSeleccionado,
           'pregunta_id': preguntaId,
           'respuesta_id': respuestaId,
-        }),
+        },
       );
 
-      if (res.statusCode == 200) {
-        if (mounted) {
-          setState(() {
-            respuestaSeleccionadaId = respuestaId;
-            _estado = 'Guardado ✅';
-          });
-        }
+      if (!mounted) return;
+      setState(() {
+        respuestaSeleccionadaId = respuestaId;
+        _estado = 'Guardado ✅';
+      });
 
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (mounted) {
-          _resetTotal();
-        }
-      } else {
-        if (mounted) setState(() => _estado = 'Error guardando ❌');
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+
+      if (mounted) {
+        await _resetVisualOnly();
       }
     } catch (_) {
-      if (mounted) setState(() => _estado = 'No conecta con backend ❌');
+      if (!mounted) return;
+      setState(() {
+        _estado = 'No conecta con backend ❌';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _procesandoFlujo = false;
+          cargando = false;
+        });
+      }
     }
   }
 
   // ================== FLUJO ==================
   Future<void> _procesarSeleccion(String selected) async {
+    if (_procesandoFlujo) return;
+
     if (nivelActual == 0) {
       categoriaSeleccionada = selected;
       await _cargarSubrazas(selected);
@@ -339,26 +409,47 @@ class _RuletaPageState extends State<RuletaPage>
     if (nivelActual == 2) {
       rolSeleccionado = selected;
 
-      final siguiente = await _decidirSiguienteEvento();
-
-      if (siguiente == 'pregunta') {
-        await _cargarPreguntaRandom();
-        return;
-      }
-
-      if (siguiente == 'ruleta') {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-
-        if (mounted) {
-          _resetTotal();
-        }
-        return;
-      }
-
       if (mounted) {
         setState(() {
-          _estado = 'No se pudo decidir el siguiente evento ❌';
+          _procesandoFlujo = true;
+          _estado = 'Procesando...';
         });
+      }
+
+      try {
+        final siguiente = await _decidirSiguienteEvento();
+
+        if (siguiente == null) {
+          if (mounted) {
+            setState(() {
+              _estado = 'Error de conexión ❌';
+            });
+          }
+          return;
+        }
+
+        if (siguiente == 'pregunta') {
+          await _cargarPreguntaRandom();
+          return;
+        }
+
+        if (siguiente == 'ruleta') {
+          await _resetVisualOnly();
+          return;
+        }
+
+        if (mounted) {
+          setState(() {
+            _estado = 'No se pudo decidir el siguiente evento ❌';
+          });
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _procesandoFlujo = false;
+            cargando = false;
+          });
+        }
       }
     }
   }
@@ -413,7 +504,13 @@ class _RuletaPageState extends State<RuletaPage>
 
   // ================== ACCIONES ==================
   Future<void> _spin() async {
-    if (_girando || cargando || items.isEmpty || mostrandoPregunta) return;
+    if (_girando ||
+        cargando ||
+        _procesandoFlujo ||
+        items.isEmpty ||
+        mostrandoPregunta) {
+      return;
+    }
 
     _cambiarFondo();
 
@@ -446,11 +543,54 @@ class _RuletaPageState extends State<RuletaPage>
       ..forward();
   }
 
-  void _resetTotal() {
+  Future<void> _resetVisualOnly() async {
     if (_girando) return;
-    _cambiarFondo();
-    _angle = 0.0;
-    _cargarCategorias();
+
+    if (mounted) {
+      setState(() {
+        _angle = 0.0;
+        mostrandoPregunta = false;
+        nivelActual = 0;
+        _estado = '';
+      });
+    }
+
+    await _cargarCategorias();
+  }
+
+  Future<void> _resetTotalManual() async {
+    if (_girando || _procesandoFlujo) return;
+
+    if (mounted) {
+      setState(() {
+        cargando = true;
+        _procesandoFlujo = true;
+        _estado = 'Reiniciando...';
+      });
+    }
+
+    try {
+      await _postJson(Uri.parse('$baseUrl/reiniciar-juego'));
+
+      if (mounted) {
+        _cambiarFondo();
+        _angle = 0.0;
+      }
+
+      await _cargarCategorias();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _estado = 'Error backend ❌';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          cargando = false;
+          _procesandoFlujo = false;
+        });
+      }
+    }
   }
 
   String _tituloNivel() {
@@ -628,7 +768,10 @@ class _RuletaPageState extends State<RuletaPage>
                                   text: 'GIRAR',
                                   variant: _ButtonVariant.blanco,
                                   disabled:
-                                      _girando || cargando || items.isEmpty,
+                                      _girando ||
+                                      cargando ||
+                                      _procesandoFlujo ||
+                                      items.isEmpty,
                                   onTap: _spin,
                                 ),
                               ),
@@ -637,8 +780,8 @@ class _RuletaPageState extends State<RuletaPage>
                                 child: _ComicButton(
                                   text: 'REINICIAR',
                                   variant: _ButtonVariant.negro,
-                                  disabled: _girando,
-                                  onTap: _resetTotal,
+                                  disabled: _girando || _procesandoFlujo,
+                                  onTap: _resetTotalManual,
                                 ),
                               ),
                             ],
