@@ -6,33 +6,49 @@
 ![Flask](https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 
-Aplicación móvil de ruleta aleatoria con estética de cómic. Gira categorías, subrazas y roles, y responde preguntas que se guardan en base de datos.
+Aplicación móvil interactiva inspirada en el estilo visual de los cómics, desarrollada con Flutter y Flask.
+
+La aplicación genera personajes aleatorios a través de múltiples ruletas dinámicas conectadas entre sí mediante filtros inteligentes y preguntas aleatorias almacenadas en MySQL.
 
 ---
 
-## 🛠️ Tecnologías
+# ✨ Características
 
-- **Frontend:** Flutter + Dart
-- **Backend:** Python + Flask
-- **Base de datos:** MySQL
-
----
-
-## 🚀 Cómo correr el proyecto
-
-**Backend**
-```bash
-pip install -r requirements.txt
-python app.py
-```
-
-**Frontend**
-
-Abre el proyecto en Android Studio y corre el emulador.
+- 🎯 Sistema de ruletas encadenadas
+- 🎲 Eventos aleatorios entre preguntas y ruletas
+- 🧠 Preguntas dinámicas sin repetición inmediata
+- 💾 Persistencia de resultados en MySQL
+- 🎨 Interfaz estilo cómic animada
+- ⚡ Backend REST API con Flask
+- 🔄 Reinicio automático de preguntas
+- 🛡️ Control de flujo para evitar bloqueos
+- 🎮 Sistema de selección progresiva de personaje
 
 ---
 
-## 👩‍💻 Autores
+# 🧩 Flujo de la Ruleta
 
-- **Mariana Gutiérrez Restrepo**
-- **Julián David López**
+La generación del personaje sigue este orden:
+
+1. Origen
+2. Categoría
+3. Raza
+4. Subraza
+5. Rol
+6. Arma
+7. Tipo de daño
+8. Moralidad
+9. Nivel de amenaza
+
+Cada nivel se filtra dinámicamente según las selecciones anteriores.
+
+Ejemplo:
+
+```text
+Dragon Ball
+   ↓
+Warrior
+   ↓
+Saiyan
+   ↓
+Elite Saiyan
