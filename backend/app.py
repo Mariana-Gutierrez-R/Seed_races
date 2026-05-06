@@ -9,15 +9,14 @@ import random
 load_dotenv()
 
 # ================== CONFIG ==================
-CANTIDAD_PREGUNTAS = 5   # <- corregido de 3 a 5
-CANTIDAD_CATEGORIAS = 11
+CANTIDAD_PREGUNTAS = 5
+CANTIDAD_RULETAS = 9
 
 # ================== APP ==================
 app = Flask(__name__)
 CORS(app)
 
-
-# ================== GAME SERVICE - OOP ==================
+# ================== GAME SERVICE ==================
 class GiroService:
     def __init__(self):
         self.db_host = os.getenv("DB_HOST")
@@ -38,9 +37,10 @@ class GiroService:
     def get_control_state(self):
         conn = self.get_db_connection()
         cur = conn.cursor(dictionary=True, buffered=True)
+
         try:
             cur.execute("""
-                SELECT 
+                SELECT
                     id_control,
                     preguntas_restantes,
                     categorias_restantes,
@@ -51,8 +51,13 @@ class GiroService:
                 LIMIT 1
             """)
             control = cur.fetchone()
-            if control and control.get("preguntas_respondidas") is None:
-                control["preguntas_respondidas"] = ""
+
+            if control:
+                control["preguntas_restantes"] = int(control["preguntas_restantes"] or 0)
+                control["categorias_restantes"] = int(control["categorias_restantes"] or 0)
+                control["ultimo_evento"] = control["ultimo_evento"] or "none"
+                control["preguntas_respondidas"] = control["preguntas_respondidas"] or ""
+
             return control
         finally:
             cur.close()
@@ -68,6 +73,7 @@ class GiroService:
     ):
         conn = self.get_db_connection()
         cur = conn.cursor(buffered=True)
+
         try:
             cur.execute("""
                 UPDATE control_juego
@@ -90,15 +96,15 @@ class GiroService:
             conn.close()
 
     def reset_game(self):
-        """Reinicio completo: preguntas Y ruletas vuelven a su estado inicial."""
         control = self.get_control_state()
+
         if not control:
             return {"error": "no existe control_juego"}, 404
 
         self.update_control_state(
             id_control=control["id_control"],
             preguntas_restantes=CANTIDAD_PREGUNTAS,
-            categorias_restantes=CANTIDAD_CATEGORIAS,
+            categorias_restantes=CANTIDAD_RULETAS,
             ultimo_evento="none",
             preguntas_respondidas="",
         )
@@ -106,86 +112,72 @@ class GiroService:
         return {
             "mensaje": "Juego reiniciado correctamente",
             "preguntas_restantes": CANTIDAD_PREGUNTAS,
-            "categorias_restantes": CANTIDAD_CATEGORIAS,
+            "categorias_restantes": CANTIDAD_RULETAS,
             "ultimo_evento": "none",
             "preguntas_respondidas": "",
         }, 200
 
-    def reset_solo_preguntas(self, id_control, categorias_restantes, ultimo_evento):
-        """
-        Reinicio parcial: solo vuelven las preguntas a 5.
-        Las ruletas NO se tocan — siguen con su conteo actual.
-        Se guarda en SQL igual que siempre.
-        """
-        self.update_control_state(
-            id_control=id_control,
-            preguntas_restantes=CANTIDAD_PREGUNTAS,
-            categorias_restantes=categorias_restantes,  # <- no cambia
-            ultimo_evento=ultimo_evento,
-            preguntas_respondidas="",                   # <- borra historial de preguntas
-        )
-
     def decide_next_event(self):
+        evento_actual = request.args.get("evento_actual", "ruleta")
+        ruleta_completa = request.args.get("ruleta_completa", "false").lower() == "true"
+
         control = self.get_control_state()
+
         if not control:
             return {"error": "no existe control_juego"}, 404
 
-        preguntas_restantes = int(control["preguntas_restantes"])
-        categorias_restantes = int(control.get("categorias_restantes", CANTIDAD_CATEGORIAS))
-        preguntas_respondidas = control["preguntas_respondidas"] or ""
+        preguntas_restantes = control["preguntas_restantes"]
+        ruletas_restantes = control["categorias_restantes"]
+        preguntas_respondidas = control["preguntas_respondidas"]
 
-        eleccion = random.choice([1, 2])
+        if evento_actual == "ruleta" and ruleta_completa and ruletas_restantes > 0:
+            ruletas_restantes -= 1
 
-        if eleccion == 1 and preguntas_restantes > 0:
-            siguiente = "pregunta"
-        elif eleccion == 2 and categorias_restantes > 0:
-            siguiente = "ruleta"
-        elif preguntas_restantes > 0:
-            siguiente = "pregunta"
-        elif categorias_restantes > 0:
+        if preguntas_restantes <= 0:
+            preguntas_restantes = CANTIDAD_PREGUNTAS
+            preguntas_respondidas = ""
+
+        if ruletas_restantes <= 0:
+            ruletas_restantes = CANTIDAD_RULETAS
+
+        if evento_actual == "pregunta":
             siguiente = "ruleta"
         else:
-            siguiente = "fin"
+            siguiente = random.choice(["ruleta", "pregunta"])
 
-        if siguiente == "ruleta":
-            categorias_restantes -= 1
-            self.update_control_state(
-                id_control=control["id_control"],
-                preguntas_restantes=preguntas_restantes,
-                categorias_restantes=categorias_restantes,
-                ultimo_evento="ruleta",
-                preguntas_respondidas=preguntas_respondidas,
-            )
+        self.update_control_state(
+            id_control=control["id_control"],
+            preguntas_restantes=preguntas_restantes,
+            categorias_restantes=ruletas_restantes,
+            ultimo_evento=siguiente,
+            preguntas_respondidas=preguntas_respondidas,
+        )
 
         return {
             "siguiente": siguiente,
             "preguntas_restantes": preguntas_restantes,
-            "categorias_restantes": categorias_restantes,
+            "categorias_restantes": ruletas_restantes,
+            "ultimo_evento": siguiente,
+            "variable_aleatoria_controlada": "random.choice(['ruleta', 'pregunta'])",
         }, 200
 
     def get_random_question_without_repeating(self):
         control = self.get_control_state()
+
         if not control:
             return {"error": "no existe control_juego"}, 404
 
-        preguntas_restantes = int(control["preguntas_restantes"])
-        preguntas_respondidas = control["preguntas_respondidas"] or ""
+        preguntas_restantes = control["preguntas_restantes"]
+        ruletas_restantes = control["categorias_restantes"]
+        preguntas_respondidas = control["preguntas_respondidas"]
 
-        # Si el contador llegó a 0, reiniciamos SOLO las preguntas
-        # Las ruletas no se tocan
         if preguntas_restantes <= 0:
-            self.reset_solo_preguntas(
-                id_control=control["id_control"],
-                categorias_restantes=int(control.get("categorias_restantes", CANTIDAD_CATEGORIAS)),
-                ultimo_evento=control.get("ultimo_evento", "none"),
-            )
-            control = self.get_control_state()
-            preguntas_restantes = int(control["preguntas_restantes"])
+            preguntas_restantes = CANTIDAD_PREGUNTAS
             preguntas_respondidas = ""
 
-        respondidas_list = []
+        respondidas = []
         if preguntas_respondidas.strip():
-            respondidas_list = [
+            respondidas = [
                 int(x)
                 for x in preguntas_respondidas.split(",")
                 if x.strip().isdigit()
@@ -195,16 +187,15 @@ class GiroService:
         cur = conn.cursor(dictionary=True, buffered=True)
 
         try:
-            # Busca una pregunta que no haya salido aún
-            if respondidas_list:
-                placeholders = ",".join(["%s"] * len(respondidas_list))
+            if respondidas:
+                placeholders = ",".join(["%s"] * len(respondidas))
                 cur.execute(f"""
                     SELECT id, texto_pregunta
                     FROM pregunta
                     WHERE id NOT IN ({placeholders})
                     ORDER BY RAND()
                     LIMIT 1
-                """, tuple(respondidas_list))
+                """, tuple(respondidas))
             else:
                 cur.execute("""
                     SELECT id, texto_pregunta
@@ -215,14 +206,10 @@ class GiroService:
 
             pregunta = cur.fetchone()
 
-            # Si no hay preguntas disponibles (no debería pasar, pero por si acaso)
             if not pregunta:
-                self.reset_solo_preguntas(
-                    id_control=control["id_control"],
-                    categorias_restantes=int(control.get("categorias_restantes", CANTIDAD_CATEGORIAS)),
-                    ultimo_evento=control.get("ultimo_evento", "none"),
-                )
-                respondidas_list = []
+                respondidas = []
+                preguntas_restantes = CANTIDAD_PREGUNTAS
+
                 cur.execute("""
                     SELECT id, texto_pregunta
                     FROM pregunta
@@ -234,65 +221,124 @@ class GiroService:
                 if not pregunta:
                     return {"error": "no hay preguntas registradas"}, 404
 
-            # Marca esta pregunta como respondida y guarda en SQL
-            respondidas_list.append(int(pregunta["id"]))
-            nueva_lista = ",".join(map(str, respondidas_list))
-            nuevas_preguntas_restantes = max(preguntas_restantes - 1, 0)
+            respondidas.append(int(pregunta["id"]))
+            nuevas_preguntas_restantes = preguntas_restantes - 1
+
+            if nuevas_preguntas_restantes <= 0:
+                preguntas_restantes_guardar = CANTIDAD_PREGUNTAS
+                preguntas_respondidas_guardar = ""
+            else:
+                preguntas_restantes_guardar = nuevas_preguntas_restantes
+                preguntas_respondidas_guardar = ",".join(map(str, respondidas))
 
             self.update_control_state(
                 id_control=control["id_control"],
-                preguntas_restantes=nuevas_preguntas_restantes,
-                categorias_restantes=int(control.get("categorias_restantes", CANTIDAD_CATEGORIAS)),
+                preguntas_restantes=preguntas_restantes_guardar,
+                categorias_restantes=ruletas_restantes,
                 ultimo_evento="pregunta",
-                preguntas_respondidas=nueva_lista,
+                preguntas_respondidas=preguntas_respondidas_guardar,
             )
 
-            # Trae las respuestas de esa pregunta
             cur.execute("""
                 SELECT id, texto_respuesta
                 FROM respuesta
                 WHERE pregunta_id = %s
                 ORDER BY id ASC
             """, (pregunta["id"],))
+
             respuestas = cur.fetchall()
 
             return {
                 "pregunta_id": pregunta["id"],
                 "texto_pregunta": pregunta["texto_pregunta"],
                 "respuestas": respuestas,
-                "preguntas_restantes": nuevas_preguntas_restantes,
+                "preguntas_restantes": preguntas_restantes_guardar,
+                "categorias_restantes": ruletas_restantes,
             }, 200
-
         finally:
             cur.close()
             conn.close()
 
+    def get_id_by_name(self, table_name, id_column, name_column, value):
+        conn = self.get_db_connection()
+        cur = conn.cursor(dictionary=True, buffered=True)
+
+        try:
+            cur.execute(f"""
+                SELECT {id_column} AS id
+                FROM {table_name}
+                WHERE {name_column} = %s
+                LIMIT 1
+            """, (value,))
+            row = cur.fetchone()
+            return row["id"] if row else None
+        finally:
+            cur.close()
+            conn.close()
+
+    def resolve_ids(self, data):
+        return {
+            "id_origin": self.get_id_by_name("origin", "id_origin", "origin_name", data.get("origin")),
+            "id_category": self.get_id_by_name("category", "id_category", "category_name", data.get("category")),
+            "id_race": self.get_id_by_name("race", "id_race", "race_name", data.get("race")),
+            "id_subrace": self.get_id_by_name("subrace", "id_subrace", "subrace_name", data.get("subrace")),
+            "id_role": self.get_id_by_name("role", "id_role", "role_name", data.get("role")),
+            "id_weapon": self.get_id_by_name("weapon", "id_weapon", "weapon_name", data.get("weapon")),
+            "id_damage_type": self.get_id_by_name("damage_type", "id_damage_type", "damage_type_name", data.get("damage_type")),
+            "id_morality": self.get_id_by_name("morality", "id_morality", "morality_name", data.get("morality")),
+            "id_threat_level": self.get_id_by_name("threat_level", "id_threat_level", "threat_level_name", data.get("threat_level")),
+        }
+
     def register_spin_result(self, data):
-        category = data.get("category")
-        subrace = data.get("subrace")
-        role = data.get("role")
         pregunta_id = data.get("pregunta_id")
         respuesta_id = data.get("respuesta_id")
 
-        if not category or not subrace or not role or not pregunta_id or not respuesta_id:
-            return {"error": "faltan datos"}, 400
+        if not pregunta_id or not respuesta_id:
+            return {"error": "faltan datos de pregunta o respuesta"}, 400
+
+        ids = self.resolve_ids(data)
+
+        if not all(ids.values()):
+            return {
+                "error": "no se pudieron resolver todos los IDs",
+                "ids": ids,
+            }, 400
 
         conn = self.get_db_connection()
         cur = conn.cursor(buffered=True)
 
         try:
             cur.execute("""
-                INSERT INTO PRUEBA_RULETA (
-                    category,
-                    subrace,
-                    role,
+                INSERT INTO prueba_ruleta (
+                    id_origin,
+                    id_category,
+                    id_race,
+                    id_subrace,
+                    id_role,
+                    id_weapon,
+                    id_damage_type,
+                    id_morality,
+                    id_threat_level,
                     pregunta_id,
                     respuesta_id
                 )
-                VALUES (%s, %s, %s, %s, %s)
-            """, (category, subrace, role, pregunta_id, respuesta_id))
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                ids["id_origin"],
+                ids["id_category"],
+                ids["id_race"],
+                ids["id_subrace"],
+                ids["id_role"],
+                ids["id_weapon"],
+                ids["id_damage_type"],
+                ids["id_morality"],
+                ids["id_threat_level"],
+                pregunta_id,
+                respuesta_id,
+            ))
             conn.commit()
-            return {"mensaje": "Guardado OK"}, 200
+
+            return {"mensaje": "Guardado OK", "ids": ids}, 200
         finally:
             cur.close()
             conn.close()
@@ -300,6 +346,83 @@ class GiroService:
 
 game_service = GiroService()
 
+# ================== QUERY HELPERS ==================
+def build_filter(params, flexible=False):
+    joins = """
+        INNER JOIN origin o ON c.id_origin = o.id_origin
+        INNER JOIN category cat ON c.id_category = cat.id_category
+        INNER JOIN race r ON c.id_race = r.id_race
+        INNER JOIN subrace s ON c.id_subrace = s.id_subrace
+        INNER JOIN role ro ON c.id_role = ro.id_role
+        INNER JOIN weapon w ON c.id_weapon = w.id_weapon
+        INNER JOIN damage_type dt ON c.id_damage_type = dt.id_damage_type
+        INNER JOIN morality m ON c.id_morality = m.id_morality
+        INNER JOIN threat_level tl ON c.id_threat_level = tl.id_threat_level
+    """
+
+    wheres = []
+    values = []
+
+    if params.get("origin"):
+        wheres.append("o.origin_name = %s")
+        values.append(params["origin"])
+
+    if params.get("category"):
+        wheres.append("cat.category_name = %s")
+        values.append(params["category"])
+
+    if params.get("race"):
+        wheres.append("r.race_name = %s")
+        values.append(params["race"])
+
+    if params.get("subrace"):
+        wheres.append("s.subrace_name = %s")
+        values.append(params["subrace"])
+
+    if not flexible:
+        if params.get("role"):
+            wheres.append("ro.role_name = %s")
+            values.append(params["role"])
+
+        if params.get("weapon"):
+            wheres.append("w.weapon_name = %s")
+            values.append(params["weapon"])
+
+        if params.get("damage_type"):
+            wheres.append("dt.damage_type_name = %s")
+            values.append(params["damage_type"])
+
+        if params.get("morality"):
+            wheres.append("m.morality_name = %s")
+            values.append(params["morality"])
+
+        if params.get("threat_level"):
+            wheres.append("tl.threat_level_name = %s")
+            values.append(params["threat_level"])
+
+    where_clause = "WHERE " + " AND ".join(wheres) if wheres else ""
+    return joins, where_clause, values
+
+
+def query_distinct(select_expr, params, flexible=False):
+    joins, where_clause, values = build_filter(params, flexible=flexible)
+
+    conn = game_service.get_db_connection()
+    cur = conn.cursor(dictionary=True, buffered=True)
+
+    try:
+        cur.execute(f"""
+            SELECT DISTINCT {select_expr} AS valor
+            FROM characters c
+            {joins}
+            {where_clause}
+            ORDER BY valor ASC
+        """, tuple(values))
+
+        return [row["valor"] for row in cur.fetchall() if row["valor"]]
+    finally:
+        cur.close()
+        conn.close()
 
 # ================== ROUTES ==================
 @app.get("/health")
@@ -307,96 +430,89 @@ def health():
     return jsonify({"ok": True})
 
 
+@app.get("/origenes")
+def obtener_origenes():
+    return jsonify({"origenes": query_distinct("o.origin_name", {})})
+
+
 @app.get("/categorias")
 def obtener_categorias():
-    conn = game_service.get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
-    try:
-        cur.execute("""
-            SELECT DISTINCT category
-            FROM personajes
-            WHERE category IS NOT NULL AND category <> ''
-            ORDER BY category ASC
-        """)
-        rows = cur.fetchall()
-        return jsonify({"categorias": [row["category"] for row in rows]})
-    finally:
-        cur.close()
-        conn.close()
+    params = {"origin": request.args.get("origin")}
+    return jsonify({"categorias": query_distinct("cat.category_name", params)})
+
+
+@app.get("/razas")
+def obtener_razas():
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+    }
+    return jsonify({"razas": query_distinct("r.race_name", params)})
 
 
 @app.get("/subrazas")
 def obtener_subrazas():
-    categoria = request.args.get("category")
-    if not categoria:
-        return jsonify({"error": "category es requerido"}), 400
-
-    conn = game_service.get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
-    try:
-        cur.execute("""
-            SELECT DISTINCT subrace
-            FROM personajes
-            WHERE category = %s
-              AND subrace IS NOT NULL
-              AND subrace <> ''
-            ORDER BY subrace ASC
-        """, (categoria,))
-        rows = cur.fetchall()
-        return jsonify({"category": categoria, "subrazas": [row["subrace"] for row in rows]})
-    finally:
-        cur.close()
-        conn.close()
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+        "race": request.args.get("race"),
+    }
+    return jsonify({"subrazas": query_distinct("s.subrace_name", params)})
 
 
 @app.get("/roles")
 def obtener_roles():
-    categoria = request.args.get("category")
-    subraza = request.args.get("subrace")
-    if not categoria or not subraza:
-        return jsonify({"error": "category y subrace son requeridos"}), 400
-
-    conn = game_service.get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
-    try:
-        cur.execute("""
-            SELECT DISTINCT role
-            FROM personajes
-            WHERE category = %s
-              AND subrace = %s
-              AND role IS NOT NULL
-              AND role <> ''
-            ORDER BY role ASC
-        """, (categoria, subraza))
-        rows = cur.fetchall()
-        return jsonify({"category": categoria, "subrace": subraza, "roles": [row["role"] for row in rows]})
-    finally:
-        cur.close()
-        conn.close()
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+        "race": request.args.get("race"),
+        "subrace": request.args.get("subrace"),
+    }
+    return jsonify({"roles": query_distinct("ro.role_name", params, flexible=True)})
 
 
-@app.get("/personajes-filtrados")
-def obtener_personajes_filtrados():
-    categoria = request.args.get("category")
-    subraza = request.args.get("subrace")
-    rol = request.args.get("role")
-    if not categoria or not subraza or not rol:
-        return jsonify({"error": "category, subrace y role son requeridos"}), 400
+@app.get("/armas")
+def obtener_armas():
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+        "race": request.args.get("race"),
+        "subrace": request.args.get("subrace"),
+    }
+    return jsonify({"armas": query_distinct("w.weapon_name", params, flexible=True)})
 
-    conn = game_service.get_db_connection()
-    cur = conn.cursor(dictionary=True, buffered=True)
-    try:
-        cur.execute("""
-            SELECT id, name, race, subrace, category, origin, role,
-                   weapon, damage_type, character_name, morality, threat_level
-            FROM personajes
-            WHERE category = %s AND subrace = %s AND role = %s
-            ORDER BY character_name ASC
-        """, (categoria, subraza, rol))
-        return jsonify({"category": categoria, "subrace": subraza, "role": rol, "personajes": cur.fetchall()})
-    finally:
-        cur.close()
-        conn.close()
+
+@app.get("/tipos-dano")
+def obtener_tipos_dano():
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+        "race": request.args.get("race"),
+        "subrace": request.args.get("subrace"),
+    }
+    return jsonify({"tipos_dano": query_distinct("dt.damage_type_name", params, flexible=True)})
+
+
+@app.get("/moralidades")
+def obtener_moralidades():
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+        "race": request.args.get("race"),
+        "subrace": request.args.get("subrace"),
+    }
+    return jsonify({"moralidades": query_distinct("m.morality_name", params, flexible=True)})
+
+
+@app.get("/niveles-amenaza")
+def obtener_niveles_amenaza():
+    params = {
+        "origin": request.args.get("origin"),
+        "category": request.args.get("category"),
+        "race": request.args.get("race"),
+        "subrace": request.args.get("subrace"),
+    }
+    return jsonify({"niveles_amenaza": query_distinct("tl.threat_level_name", params, flexible=True)})
 
 
 @app.get("/decidir-evento")
@@ -428,27 +544,36 @@ def reiniciar_juego():
 def ver_historial():
     conn = game_service.get_db_connection()
     cur = conn.cursor(dictionary=True, buffered=True)
+
     try:
         cur.execute("""
-            SELECT 
+            SELECT
                 pr.id,
-                pr.fecha_completa,
-                pr.category,
-                pr.subrace,
-                pr.role,
+                pr.Fecha_completa,
+                pr.id_origin,
+                pr.id_category,
+                pr.id_race,
+                pr.id_subrace,
+                pr.id_role,
+                pr.id_weapon,
+                pr.id_damage_type,
+                pr.id_morality,
+                pr.id_threat_level,
+                pr.pregunta_id,
+                pr.respuesta_id,
                 p.texto_pregunta,
                 r.texto_respuesta
-            FROM PRUEBA_RULETA pr
+            FROM prueba_ruleta pr
             LEFT JOIN pregunta p ON pr.pregunta_id = p.id
             LEFT JOIN respuesta r ON pr.respuesta_id = r.id
             ORDER BY pr.id DESC
             LIMIT 50
         """)
+
         return jsonify(cur.fetchall())
     finally:
         cur.close()
         conn.close()
-
 
 # ================== RUN ==================
 if __name__ == "__main__":

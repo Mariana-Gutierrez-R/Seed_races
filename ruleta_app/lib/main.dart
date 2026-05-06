@@ -18,6 +18,296 @@ class ComicRuletaApp extends StatelessWidget {
   }
 }
 
+// ================== MODELS ==================
+
+class PreguntaModel {
+  final int id;
+  final String texto;
+  final List<RespuestaModel> respuestas;
+
+  const PreguntaModel({
+    required this.id,
+    required this.texto,
+    required this.respuestas,
+  });
+}
+
+class RespuestaModel {
+  final int id;
+  final String texto;
+
+  const RespuestaModel({required this.id, required this.texto});
+}
+
+class RespuestaPendiente {
+  final int preguntaId;
+  final int respuestaId;
+
+  const RespuestaPendiente({
+    required this.preguntaId,
+    required this.respuestaId,
+  });
+}
+
+class EstadoJuego {
+  final String? origin;
+  final String? category;
+  final String? race;
+  final String? subrace;
+  final String? role;
+  final String? weapon;
+  final String? damageType;
+  final String? morality;
+  final String? threatLevel;
+
+  const EstadoJuego({
+    this.origin,
+    this.category,
+    this.race,
+    this.subrace,
+    this.role,
+    this.weapon,
+    this.damageType,
+    this.morality,
+    this.threatLevel,
+  });
+
+  EstadoJuego copyWith({
+    String? origin,
+    String? category,
+    String? race,
+    String? subrace,
+    String? role,
+    String? weapon,
+    String? damageType,
+    String? morality,
+    String? threatLevel,
+  }) {
+    return EstadoJuego(
+      origin: origin ?? this.origin,
+      category: category ?? this.category,
+      race: race ?? this.race,
+      subrace: subrace ?? this.subrace,
+      role: role ?? this.role,
+      weapon: weapon ?? this.weapon,
+      damageType: damageType ?? this.damageType,
+      morality: morality ?? this.morality,
+      threatLevel: threatLevel ?? this.threatLevel,
+    );
+  }
+
+  bool get completo {
+    return origin != null &&
+        category != null &&
+        race != null &&
+        subrace != null &&
+        role != null &&
+        weapon != null &&
+        damageType != null &&
+        morality != null &&
+        threatLevel != null;
+  }
+}
+
+enum NivelRuleta {
+  origen,
+  categoria,
+  raza,
+  subraza,
+  rol,
+  arma,
+  tipoDano,
+  moralidad,
+  nivelAmenaza,
+}
+
+extension NivelRuletaExt on NivelRuleta {
+  String get titulo {
+    switch (this) {
+      case NivelRuleta.origen:
+        return 'GIRAR ORIGEN';
+      case NivelRuleta.categoria:
+        return 'GIRAR CATEGORÍA';
+      case NivelRuleta.raza:
+        return 'GIRAR RAZA';
+      case NivelRuleta.subraza:
+        return 'GIRAR SUBRAZA';
+      case NivelRuleta.rol:
+        return 'GIRAR ROL';
+      case NivelRuleta.arma:
+        return 'GIRAR ARMA';
+      case NivelRuleta.tipoDano:
+        return 'GIRAR TIPO DE DAÑO';
+      case NivelRuleta.moralidad:
+        return 'GIRAR MORALIDAD';
+      case NivelRuleta.nivelAmenaza:
+        return 'GIRAR NIVEL DE AMENAZA';
+    }
+  }
+}
+
+// ================== API ==================
+
+class ApiService {
+  static const String baseUrl = 'http://10.0.2.2:8000';
+
+  static Future<Map<String, dynamic>> _get(
+    String path, [
+    Map<String, String>? params,
+  ]) async {
+    final uri = params == null
+        ? Uri.parse('$baseUrl$path')
+        : Uri.parse('$baseUrl$path').replace(queryParameters: params);
+
+    final res = await http.get(uri).timeout(const Duration(seconds: 8));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('HTTP ${res.statusCode}: ${res.body}');
+    }
+
+    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> _post(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl$path'),
+          headers: {'Content-Type': 'application/json'},
+          body: body == null ? null : jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 8));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('HTTP ${res.statusCode}: ${res.body}');
+    }
+
+    if (res.body.isEmpty) return {};
+    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  static Map<String, String> _params(EstadoJuego j) {
+    final m = <String, String>{};
+
+    if (j.origin != null) m['origin'] = j.origin!;
+    if (j.category != null) m['category'] = j.category!;
+    if (j.race != null) m['race'] = j.race!;
+    if (j.subrace != null) m['subrace'] = j.subrace!;
+    if (j.role != null) m['role'] = j.role!;
+    if (j.weapon != null) m['weapon'] = j.weapon!;
+    if (j.damageType != null) m['damage_type'] = j.damageType!;
+    if (j.morality != null) m['morality'] = j.morality!;
+    if (j.threatLevel != null) m['threat_level'] = j.threatLevel!;
+
+    return m;
+  }
+
+  static Future<List<String>> getOrigenes() async {
+    final d = await _get('/origenes');
+    return List<String>.from(d['origenes'] ?? []);
+  }
+
+  static Future<List<String>> getCategorias(EstadoJuego j) async {
+    final d = await _get('/categorias', _params(j));
+    return List<String>.from(d['categorias'] ?? []);
+  }
+
+  static Future<List<String>> getRazas(EstadoJuego j) async {
+    final d = await _get('/razas', _params(j));
+    return List<String>.from(d['razas'] ?? []);
+  }
+
+  static Future<List<String>> getSubrazas(EstadoJuego j) async {
+    final d = await _get('/subrazas', _params(j));
+    return List<String>.from(d['subrazas'] ?? []);
+  }
+
+  static Future<List<String>> getRoles(EstadoJuego j) async {
+    final d = await _get('/roles', _params(j));
+    return List<String>.from(d['roles'] ?? []);
+  }
+
+  static Future<List<String>> getArmas(EstadoJuego j) async {
+    final d = await _get('/armas', _params(j));
+    return List<String>.from(d['armas'] ?? []);
+  }
+
+  static Future<List<String>> getTiposDano(EstadoJuego j) async {
+    final d = await _get('/tipos-dano', _params(j));
+    return List<String>.from(d['tipos_dano'] ?? []);
+  }
+
+  static Future<List<String>> getMoralidades(EstadoJuego j) async {
+    final d = await _get('/moralidades', _params(j));
+    return List<String>.from(d['moralidades'] ?? []);
+  }
+
+  static Future<List<String>> getNivelesAmenaza(EstadoJuego j) async {
+    final d = await _get('/niveles-amenaza', _params(j));
+    return List<String>.from(d['niveles_amenaza'] ?? []);
+  }
+
+  static Future<String?> decidirEvento(
+    String eventoActual, {
+    bool ruletaCompleta = false,
+  }) async {
+    final d = await _get('/decidir-evento', {
+      'evento_actual': eventoActual,
+      'ruleta_completa': ruletaCompleta ? 'true' : 'false',
+    });
+
+    return d['siguiente'] as String?;
+  }
+
+  static Future<PreguntaModel> getPreguntaRandom() async {
+    final d = await _get('/pregunta-random');
+
+    return PreguntaModel(
+      id: d['pregunta_id'] as int,
+      texto: d['texto_pregunta'] as String,
+      respuestas: (d['respuestas'] as List)
+          .map(
+            (r) => RespuestaModel(
+              id: r['id'] as int,
+              texto: r['texto_respuesta'] as String,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  static Future<void> guardarResultado({
+    required EstadoJuego juego,
+    required int preguntaId,
+    required int respuestaId,
+  }) async {
+    await _post(
+      '/guardar-resultado-completo',
+      body: {
+        'origin': juego.origin,
+        'category': juego.category,
+        'race': juego.race,
+        'subrace': juego.subrace,
+        'role': juego.role,
+        'weapon': juego.weapon,
+        'damage_type': juego.damageType,
+        'morality': juego.morality,
+        'threat_level': juego.threatLevel,
+        'pregunta_id': preguntaId,
+        'respuesta_id': respuestaId,
+      },
+    );
+  }
+
+  static Future<void> reiniciarJuego() async {
+    await _post('/reiniciar-juego');
+  }
+}
+
+// ================== PAGE ==================
+
 class RuletaPage extends StatefulWidget {
   const RuletaPage({super.key});
 
@@ -27,45 +317,42 @@ class RuletaPage extends StatefulWidget {
 
 class _RuletaPageState extends State<RuletaPage>
     with SingleTickerProviderStateMixin {
-  // ================== API ==================
-  final String baseUrl = 'http://10.0.2.2:8000';
+  EstadoJuego _juego = const EstadoJuego();
+  NivelRuleta _nivel = NivelRuleta.origen;
+  NivelRuleta? _nivelPendiente;
 
-  // ================== DRILL DOWN ==================
-  List<String> items = [];
-  String? categoriaSeleccionada;
-  String? subrazaSeleccionada;
-  String? rolSeleccionado;
+  List<String> _items = [];
+  final List<RespuestaPendiente> _respuestasPendientes = [];
 
-  int nivelActual = 0;
-  bool cargando = true;
+  bool _cargando = true;
+  bool _girando = false;
+  bool _procesando = false;
+  bool _hayError = false;
+  bool _mostrandoPregunta = false;
 
-  // ================== PREGUNTA ==================
-  bool mostrandoPregunta = false;
-  int? preguntaId;
-  String preguntaTexto = '';
-  List<Map<String, dynamic>> respuestas = [];
-  int? respuestaSeleccionadaId;
+  String _resultadoFinal = '-';
+  String _resultadoEnVivo = '-';
+  String _estado = '';
 
-  // ================== ANIMACIÓN ==================
+  PreguntaModel? _preguntaActual;
+  int? _respuestaSeleccionadaId;
+
   late final AnimationController _controller;
   final Random _rand = Random();
 
   double _angle = 0.0;
   double _startAngle = 0.0;
   double _targetAngle = 0.0;
-
-  // ================== UI ==================
-  bool _girando = false;
-  bool _procesandoFlujo = false;
-  String _resultadoFinal = '-';
-  String _resultadoEnVivo = '-';
-  String _estado = '';
-  int _contadorGiros = 0;
+  double _punteroWiggle = 0.0;
+  int _lastTick = -999;
 
   bool _modoClasico = false;
   bool _bannerClasico = false;
+  int _contadorGiros = 0;
 
-  final List<Color> fondos = const [
+  Color _fondoActual = const Color(0xFFAF52DE);
+
+  final List<Color> _fondos = const [
     Color(0xFF00B7FF),
     Color(0xFFFF3B30),
     Color(0xFFFFD60A),
@@ -73,13 +360,9 @@ class _RuletaPageState extends State<RuletaPage>
     Color(0xFFAF52DE),
     Color(0xFFFF9500),
   ];
-  Color _fondoActual = const Color(0xFFAF52DE);
 
-  double _punteroWiggle = 0.0;
-  int _lastTick = -999;
-
-  int get n => items.isEmpty ? 1 : items.length;
-  double get slice => 2 * pi / n;
+  int get _n => _items.isEmpty ? 1 : _items.length;
+  double get _slice => 2 * pi / _n;
 
   @override
   void initState() {
@@ -90,49 +373,10 @@ class _RuletaPageState extends State<RuletaPage>
       duration: const Duration(milliseconds: 3600),
     );
 
-    _controller.addListener(() {
-      final t = Curves.easeOutQuart.transform(_controller.value);
-      final ang = _startAngle + (_targetAngle - _startAngle) * t;
+    _controller.addListener(_onTick);
+    _controller.addStatusListener(_onStatus);
 
-      final tick = (ang / slice).floor();
-      if (tick != _lastTick) {
-        _lastTick = tick;
-        _hacerTickPuntero();
-      }
-
-      if (items.isNotEmpty && mounted) {
-        setState(() {
-          _angle = ang;
-          _resultadoEnVivo = items[_pickIndexUnderPointer(ang)];
-        });
-      }
-    });
-
-    _controller.addStatusListener((s) async {
-      if (s == AnimationStatus.completed && items.isNotEmpty) {
-        final idx = _pickIndexUnderPointer(_angle);
-        final selected = items[idx];
-
-        if (mounted) {
-          setState(() {
-            _girando = false;
-            _resultadoFinal = selected;
-            _estado = '';
-          });
-        }
-
-        await _procesarSeleccion(selected);
-
-        if (_modoClasico) {
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-          if (mounted) setState(() => _modoClasico = false);
-        }
-      }
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _cargarCategorias();
-    });
+    _cargarNivel(NivelRuleta.origen);
   }
 
   @override
@@ -141,334 +385,64 @@ class _RuletaPageState extends State<RuletaPage>
     super.dispose();
   }
 
-  // ================== HTTP ==================
-  Future<Map<String, dynamic>> _getJson(Uri url) async {
-    final res = await http.get(url).timeout(const Duration(seconds: 5));
+  // ================== ANIMATION ==================
 
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('HTTP ${res.statusCode}');
+  void _onTick() {
+    final t = Curves.easeOutQuart.transform(_controller.value);
+    final ang = _startAngle + (_targetAngle - _startAngle) * t;
+
+    final tick = (ang / _slice).floor();
+
+    if (tick != _lastTick) {
+      _lastTick = tick;
+      _hacerTickPuntero();
     }
 
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> _postJson(
-    Uri url, {
-    Map<String, dynamic>? body,
-  }) async {
-    final res = await http
-        .post(
-          url,
-          headers: {'Content-Type': 'application/json'},
-          body: body == null ? null : jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 5));
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('HTTP ${res.statusCode}');
-    }
-
-    if (res.body.isEmpty) return {};
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-  }
-
-  Future<void> _cargarCategorias() async {
-    if (!mounted) return;
-
-    setState(() {
-      cargando = true;
-      mostrandoPregunta = false;
-      nivelActual = 0;
-      categoriaSeleccionada = null;
-      subrazaSeleccionada = null;
-      rolSeleccionado = null;
-      preguntaId = null;
-      preguntaTexto = '';
-      respuestas = [];
-      respuestaSeleccionadaId = null;
-      _resultadoFinal = '-';
-      _resultadoEnVivo = '-';
-      _estado = '';
-    });
-
-    try {
-      final data = await _getJson(Uri.parse('$baseUrl/categorias'));
-      final categorias = List<String>.from(data['categorias'] ?? []);
-
-      if (!mounted) return;
+    if (_items.isNotEmpty && mounted) {
       setState(() {
-        items = categorias;
-        cargando = false;
-        if (items.isNotEmpty) {
-          _resultadoEnVivo = items.first;
-          _resultadoFinal = items.first;
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        cargando = false;
-        _estado = 'Error cargando categorías ❌';
+        _angle = ang;
+        _resultadoEnVivo = _items[_pickIndex(ang)];
       });
     }
   }
 
-  Future<void> _cargarSubrazas(String category) async {
-    if (!mounted) return;
+  Future<void> _onStatus(AnimationStatus s) async {
+    if (s != AnimationStatus.completed || _items.isEmpty) return;
 
-    setState(() {
-      cargando = true;
-      nivelActual = 1;
-      subrazaSeleccionada = null;
-      rolSeleccionado = null;
-      _estado = '';
-    });
-
-    try {
-      final url = Uri.parse(
-        '$baseUrl/subrazas',
-      ).replace(queryParameters: {'category': category});
-
-      final data = await _getJson(url);
-      final subrazas = List<String>.from(data['subrazas'] ?? []);
-
-      if (!mounted) return;
-      setState(() {
-        items = subrazas;
-        cargando = false;
-        if (items.isNotEmpty) {
-          _resultadoEnVivo = items.first;
-          _resultadoFinal = items.first;
-        } else {
-          _resultadoEnVivo = '-';
-          _resultadoFinal = '-';
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        cargando = false;
-        _estado = 'Error cargando subrazas ❌';
-      });
-    }
-  }
-
-  Future<void> _cargarRoles(String category, String subrace) async {
-    if (!mounted) return;
-
-    setState(() {
-      cargando = true;
-      nivelActual = 2;
-      rolSeleccionado = null;
-      _estado = '';
-    });
-
-    try {
-      final url = Uri.parse(
-        '$baseUrl/roles',
-      ).replace(queryParameters: {'category': category, 'subrace': subrace});
-
-      final data = await _getJson(url);
-      final roles = List<String>.from(data['roles'] ?? []);
-
-      if (!mounted) return;
-      setState(() {
-        items = roles;
-        cargando = false;
-        if (items.isNotEmpty) {
-          _resultadoEnVivo = items.first;
-          _resultadoFinal = items.first;
-        } else {
-          _resultadoEnVivo = '-';
-          _resultadoFinal = '-';
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        cargando = false;
-        _estado = 'Error cargando roles ❌';
-      });
-    }
-  }
-
-  Future<void> _cargarPreguntaRandom() async {
-    if (!mounted) return;
-
-    setState(() {
-      cargando = true;
-      mostrandoPregunta = true;
-      _estado = '';
-    });
-
-    try {
-      final data = await _getJson(Uri.parse('$baseUrl/pregunta-random'));
-
-      if (!mounted) return;
-      setState(() {
-        preguntaId = data['pregunta_id'];
-        preguntaTexto = data['texto_pregunta'] ?? '';
-        respuestas = List<Map<String, dynamic>>.from(data['respuestas'] ?? []);
-        respuestaSeleccionadaId = null;
-        cargando = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        cargando = false;
-        mostrandoPregunta = false;
-        _estado = 'Error cargando pregunta ❌';
-      });
-    }
-  }
-
-  Future<String?> _decidirSiguienteEvento() async {
-    try {
-      final data = await _getJson(Uri.parse('$baseUrl/decidir-evento'));
-      return data['siguiente'] as String?;
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _estado = 'Error decidiendo siguiente evento ❌';
-        });
-      }
-      return null;
-    }
-  }
-
-  Future<void> _guardarResultadoCompleto(int respuestaId) async {
-    if (categoriaSeleccionada == null ||
-        subrazaSeleccionada == null ||
-        rolSeleccionado == null ||
-        preguntaId == null ||
-        _procesandoFlujo) {
-      return;
-    }
+    final selected = _items[_pickIndex(_angle)];
 
     if (mounted) {
       setState(() {
-        _procesandoFlujo = true;
-        _estado = 'Guardando...';
+        _girando = false;
+        _resultadoFinal = selected;
+        _estado = '';
       });
     }
 
-    try {
-      await _postJson(
-        Uri.parse('$baseUrl/guardar-resultado-completo'),
-        body: {
-          'category': categoriaSeleccionada,
-          'subrace': subrazaSeleccionada,
-          'role': rolSeleccionado,
-          'pregunta_id': preguntaId,
-          'respuesta_id': respuestaId,
-        },
-      );
+    await _procesarSeleccionRuleta(selected);
 
-      if (!mounted) return;
-      setState(() {
-        respuestaSeleccionadaId = respuestaId;
-        _estado = 'Guardado ✅';
-      });
-
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-
-      if (mounted) {
-        await _resetVisualOnly();
-      }
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _estado = 'No conecta con backend ❌';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _procesandoFlujo = false;
-          cargando = false;
-        });
-      }
+    if (_modoClasico) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (mounted) setState(() => _modoClasico = false);
     }
   }
 
-  // ================== FLUJO ==================
-  Future<void> _procesarSeleccion(String selected) async {
-    if (_procesandoFlujo) return;
+  // ================== WHEEL LOGIC ==================
 
-    if (nivelActual == 0) {
-      categoriaSeleccionada = selected;
-      await _cargarSubrazas(selected);
-      return;
-    }
-
-    if (nivelActual == 1) {
-      subrazaSeleccionada = selected;
-      await _cargarRoles(categoriaSeleccionada!, selected);
-      return;
-    }
-
-    if (nivelActual == 2) {
-      rolSeleccionado = selected;
-
-      if (mounted) {
-        setState(() {
-          _procesandoFlujo = true;
-          _estado = 'Procesando...';
-        });
-      }
-
-      try {
-        final siguiente = await _decidirSiguienteEvento();
-
-        if (siguiente == null) {
-          if (mounted) {
-            setState(() {
-              _estado = 'Error de conexión ❌';
-            });
-          }
-          return;
-        }
-
-        if (siguiente == 'pregunta') {
-          await _cargarPreguntaRandom();
-          return;
-        }
-
-        if (siguiente == 'ruleta') {
-          await _resetVisualOnly();
-          return;
-        }
-
-        if (mounted) {
-          setState(() {
-            _estado = 'No se pudo decidir el siguiente evento ❌';
-          });
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _procesandoFlujo = false;
-            cargando = false;
-          });
-        }
-      }
-    }
-  }
-
-  // ================== RUEDA ==================
-  int _pickIndexUnderPointer(double ang) {
-    const pointer = 0.0;
+  int _pickIndex(double ang) {
     int best = 0;
     double bestDist = 1e9;
 
-    for (int i = 0; i < n; i++) {
-      final start = -pi / 2 + i * slice;
-      final center = start + slice / 2 + ang;
-      final dist = _angDist(center, pointer);
-      if (dist < bestDist) {
-        bestDist = dist;
+    for (int i = 0; i < _n; i++) {
+      final center = -pi / 2 + i * _slice + _slice / 2 + ang;
+      final d = _angDist(center, 0.0);
+
+      if (d < bestDist) {
+        bestDist = d;
         best = i;
       }
     }
+
     return best;
   }
 
@@ -482,10 +456,58 @@ class _RuletaPageState extends State<RuletaPage>
     return d > pi ? 2 * pi - d : d;
   }
 
-  // ================== EFECTOS ==================
+  NivelRuleta? _siguienteNivel(NivelRuleta nivel) {
+    switch (nivel) {
+      case NivelRuleta.origen:
+        return NivelRuleta.categoria;
+      case NivelRuleta.categoria:
+        return NivelRuleta.raza;
+      case NivelRuleta.raza:
+        return NivelRuleta.subraza;
+      case NivelRuleta.subraza:
+        return NivelRuleta.rol;
+      case NivelRuleta.rol:
+        return NivelRuleta.arma;
+      case NivelRuleta.arma:
+        return NivelRuleta.tipoDano;
+      case NivelRuleta.tipoDano:
+        return NivelRuleta.moralidad;
+      case NivelRuleta.moralidad:
+        return NivelRuleta.nivelAmenaza;
+      case NivelRuleta.nivelAmenaza:
+        return null;
+    }
+  }
+
+  EstadoJuego _actualizarJuego(String selected) {
+    switch (_nivel) {
+      case NivelRuleta.origen:
+        return _juego.copyWith(origin: selected);
+      case NivelRuleta.categoria:
+        return _juego.copyWith(category: selected);
+      case NivelRuleta.raza:
+        return _juego.copyWith(race: selected);
+      case NivelRuleta.subraza:
+        return _juego.copyWith(subrace: selected);
+      case NivelRuleta.rol:
+        return _juego.copyWith(role: selected);
+      case NivelRuleta.arma:
+        return _juego.copyWith(weapon: selected);
+      case NivelRuleta.tipoDano:
+        return _juego.copyWith(damageType: selected);
+      case NivelRuleta.moralidad:
+        return _juego.copyWith(morality: selected);
+      case NivelRuleta.nivelAmenaza:
+        return _juego.copyWith(threatLevel: selected);
+    }
+  }
+
+  // ================== EFFECTS ==================
+
   void _cambiarFondo() {
-    final next = fondos[_rand.nextInt(fondos.length)];
-    setState(() => _fondoActual = next);
+    setState(() {
+      _fondoActual = _fondos[_rand.nextInt(_fondos.length)];
+    });
   }
 
   Future<void> _mostrarBannerClasico() async {
@@ -496,26 +518,355 @@ class _RuletaPageState extends State<RuletaPage>
 
   void _hacerTickPuntero() {
     if (!_girando) return;
+
     setState(() => _punteroWiggle = -0.18);
+
     Future<void>.delayed(const Duration(milliseconds: 55), () {
       if (mounted) setState(() => _punteroWiggle = 0.0);
     });
   }
 
-  // ================== ACCIONES ==================
+  // ================== LOAD DATA ==================
+
+  Future<void> _cargarNivel(NivelRuleta nivel, {EstadoJuego? juego}) async {
+    final j = juego ?? _juego;
+
+    if (!mounted) return;
+
+    setState(() {
+      _cargando = true;
+      _hayError = false;
+      _mostrandoPregunta = false;
+      _nivel = nivel;
+      _estado = '';
+    });
+
+    try {
+      List<String> lista = [];
+
+      switch (nivel) {
+        case NivelRuleta.origen:
+          lista = await ApiService.getOrigenes();
+          break;
+        case NivelRuleta.categoria:
+          lista = await ApiService.getCategorias(j);
+          break;
+        case NivelRuleta.raza:
+          lista = await ApiService.getRazas(j);
+          break;
+        case NivelRuleta.subraza:
+          lista = await ApiService.getSubrazas(j);
+          break;
+        case NivelRuleta.rol:
+          lista = await ApiService.getRoles(j);
+          break;
+        case NivelRuleta.arma:
+          lista = await ApiService.getArmas(j);
+          break;
+        case NivelRuleta.tipoDano:
+          lista = await ApiService.getTiposDano(j);
+          break;
+        case NivelRuleta.moralidad:
+          lista = await ApiService.getMoralidades(j);
+          break;
+        case NivelRuleta.nivelAmenaza:
+          lista = await ApiService.getNivelesAmenaza(j);
+          break;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _items = lista;
+        _cargando = false;
+        _resultadoEnVivo = lista.isNotEmpty ? lista.first : '-';
+        _resultadoFinal = lista.isNotEmpty ? lista.first : '-';
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _cargando = false;
+        _procesando = false;
+        _girando = false;
+        _hayError = true;
+        _estado = 'Error de conexión ❌';
+      });
+    }
+  }
+
+  Future<void> _cargarPregunta() async {
+    if (!mounted) return;
+
+    setState(() {
+      _cargando = true;
+      _hayError = false;
+      _mostrandoPregunta = true;
+      _estado = '';
+    });
+
+    try {
+      final p = await ApiService.getPreguntaRandom();
+
+      if (!mounted) return;
+
+      setState(() {
+        _preguntaActual = p;
+        _respuestaSeleccionadaId = null;
+        _cargando = false;
+        _procesando = false;
+        _girando = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _cargando = false;
+        _procesando = false;
+        _girando = false;
+        _hayError = true;
+        _mostrandoPregunta = false;
+        _estado = 'Error cargando pregunta ❌';
+      });
+    }
+  }
+
+  // ================== GAME FLOW ==================
+
+  Future<void> _procesarSeleccionRuleta(String selected) async {
+    if (_procesando) return;
+
+    setState(() {
+      _procesando = true;
+      _estado = 'Procesando...';
+    });
+
+    final nuevoJuego = _actualizarJuego(selected);
+    final siguienteNivel = _siguienteNivel(_nivel);
+
+    _juego = nuevoJuego;
+    _nivelPendiente = siguienteNivel;
+
+    try {
+      final siguienteEvento = await ApiService.decidirEvento(
+        'ruleta',
+        ruletaCompleta: _nivel == NivelRuleta.nivelAmenaza,
+      );
+
+      if (siguienteEvento == 'pregunta') {
+        if (mounted) {
+          setState(() {
+            _estado = 'Resultado: $selected';
+          });
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
+        await _cargarPregunta();
+        return;
+      }
+
+      if (siguienteEvento == 'ruleta') {
+        await Future<void>.delayed(const Duration(milliseconds: 450));
+        await _continuarRuleta();
+        return;
+      }
+
+      if (siguienteEvento == 'reiniciar') {
+        await _guardarPendientesSiCompleto();
+        await _resetVisual();
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _estado = 'Evento desconocido ❌';
+          _hayError = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _estado = 'Error de conexión ❌';
+          _hayError = true;
+        });
+      }
+    } finally {
+      if (mounted && !_mostrandoPregunta) {
+        setState(() {
+          _procesando = false;
+          _cargando = false;
+          _girando = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _guardarRespuesta(int respuestaId) async {
+    if (_procesando || _preguntaActual == null) return;
+
+    setState(() {
+      _procesando = true;
+      _respuestaSeleccionadaId = respuestaId;
+      _estado = 'Guardando...';
+    });
+
+    _respuestasPendientes.add(
+      RespuestaPendiente(
+        preguntaId: _preguntaActual!.id,
+        respuestaId: respuestaId,
+      ),
+    );
+
+    try {
+      await _guardarPendientesSiCompleto();
+
+      final siguienteEvento = await ApiService.decidirEvento('pregunta');
+
+      if (siguienteEvento == 'pregunta') {
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        await _cargarPregunta();
+        return;
+      }
+
+      if (siguienteEvento == 'ruleta') {
+        await Future<void>.delayed(const Duration(milliseconds: 450));
+        await _continuarRuleta();
+        return;
+      }
+
+      if (siguienteEvento == 'reiniciar') {
+        await _guardarPendientesSiCompleto();
+        await _resetVisual();
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _estado = 'Evento desconocido ❌';
+          _hayError = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _estado = 'Error al procesar respuesta ❌';
+          _hayError = true;
+        });
+      }
+    } finally {
+      if (mounted && !_mostrandoPregunta) {
+        setState(() {
+          _procesando = false;
+          _cargando = false;
+          _girando = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _guardarPendientesSiCompleto() async {
+    if (!_juego.completo || _respuestasPendientes.isEmpty) return;
+
+    final pendientes = List<RespuestaPendiente>.from(_respuestasPendientes);
+
+    for (final r in pendientes) {
+      await ApiService.guardarResultado(
+        juego: _juego,
+        preguntaId: r.preguntaId,
+        respuestaId: r.respuestaId,
+      );
+    }
+
+    _respuestasPendientes.clear();
+
+    if (mounted) {
+      setState(() {
+        _estado = 'Guardado ✅';
+      });
+    }
+  }
+
+  Future<void> _continuarRuleta() async {
+    if (_nivelPendiente != null) {
+      await _cargarNivel(_nivelPendiente!, juego: _juego);
+      return;
+    }
+
+    await _guardarPendientesSiCompleto();
+    await _resetVisual();
+  }
+
+  Future<void> _resetVisual() async {
+    if (_girando) return;
+
+    setState(() {
+      _angle = 0.0;
+      _juego = const EstadoJuego();
+      _nivelPendiente = null;
+      _mostrandoPregunta = false;
+      _preguntaActual = null;
+      _respuestaSeleccionadaId = null;
+      _estado = '';
+      _hayError = false;
+      _procesando = false;
+      _cargando = false;
+      _girando = false;
+    });
+
+    await _cargarNivel(NivelRuleta.origen);
+  }
+
+  Future<void> _reiniciarJuego() async {
+    if (_girando || _procesando) return;
+
+    setState(() {
+      _cargando = true;
+      _procesando = true;
+      _estado = 'Reiniciando...';
+      _hayError = false;
+    });
+
+    try {
+      await ApiService.reiniciarJuego();
+
+      _respuestasPendientes.clear();
+      _cambiarFondo();
+
+      await _resetVisual();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _hayError = true;
+          _estado = 'Error al reiniciar ❌';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _cargando = false;
+          _procesando = false;
+          _girando = false;
+        });
+      }
+    }
+  }
+
+  // ================== ACTIONS ==================
+
   Future<void> _spin() async {
     if (_girando ||
-        cargando ||
-        _procesandoFlujo ||
-        items.isEmpty ||
-        mostrandoPregunta) {
+        _cargando ||
+        _procesando ||
+        _items.isEmpty ||
+        _mostrandoPregunta ||
+        _hayError) {
       return;
     }
 
     _cambiarFondo();
 
     final siguiente = _contadorGiros + 1;
-    final activarClasico = (siguiente % 5 == 0);
+    final activarClasico = siguiente % 5 == 0;
 
     setState(() {
       _girando = true;
@@ -535,7 +886,7 @@ class _RuletaPageState extends State<RuletaPage>
       _startAngle = _angle;
       _targetAngle = _angle + extraTurns * 2 * pi + randomStop;
       _lastTick = -999;
-      _resultadoEnVivo = items[_pickIndexUnderPointer(_angle)];
+      _resultadoEnVivo = _items[_pickIndex(_angle)];
     });
 
     _controller
@@ -543,62 +894,7 @@ class _RuletaPageState extends State<RuletaPage>
       ..forward();
   }
 
-  Future<void> _resetVisualOnly() async {
-    if (_girando) return;
-
-    if (mounted) {
-      setState(() {
-        _angle = 0.0;
-        mostrandoPregunta = false;
-        nivelActual = 0;
-        _estado = '';
-      });
-    }
-
-    await _cargarCategorias();
-  }
-
-  Future<void> _resetTotalManual() async {
-    if (_girando || _procesandoFlujo) return;
-
-    if (mounted) {
-      setState(() {
-        cargando = true;
-        _procesandoFlujo = true;
-        _estado = 'Reiniciando...';
-      });
-    }
-
-    try {
-      await _postJson(Uri.parse('$baseUrl/reiniciar-juego'));
-
-      if (mounted) {
-        _cambiarFondo();
-        _angle = 0.0;
-      }
-
-      await _cargarCategorias();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _estado = 'Error backend ❌';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          cargando = false;
-          _procesandoFlujo = false;
-        });
-      }
-    }
-  }
-
-  String _tituloNivel() {
-    if (mostrandoPregunta) return 'RESPONDE LA PREGUNTA';
-    if (nivelActual == 0) return 'GIRAR CATEGORÍA';
-    if (nivelActual == 1) return 'GIRAR SUBRAZA';
-    return 'GIRAR ROL';
-  }
+  // ================== BUILD ==================
 
   @override
   Widget build(BuildContext context) {
@@ -635,7 +931,7 @@ class _RuletaPageState extends State<RuletaPage>
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                        if (!mostrandoPregunta) ...[
+                        if (!_mostrandoPregunta) ...[
                           Text(
                             'RULETA CÓMIC',
                             textAlign: TextAlign.center,
@@ -670,53 +966,27 @@ class _RuletaPageState extends State<RuletaPage>
                                     ],
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _InfoCardComic(
-                                  titulo: 'CATEGORÍA',
-                                  valor: categoriaSeleccionada ?? '-',
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _InfoCardComic(
-                                  titulo: 'SUBRAZA',
-                                  valor: subrazaSeleccionada ?? '-',
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _InfoCardComic(
-                                  titulo: 'ROL',
-                                  valor: rolSeleccionado ?? '-',
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 16),
+                          Text(
+                            _nivel.titulo,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: titleColor,
+                              letterSpacing: 1.0,
+                              shadows: _modoClasico
+                                  ? null
+                                  : const [
+                                      Shadow(
+                                        offset: Offset(2, 2),
+                                        blurRadius: 0,
+                                        color: Colors.black,
+                                      ),
+                                    ],
+                            ),
                           ),
                           const SizedBox(height: 12),
-                        ],
-                        Text(
-                          _tituloNivel(),
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: titleColor,
-                            letterSpacing: 1.0,
-                            shadows: _modoClasico || mostrandoPregunta
-                                ? null
-                                : const [
-                                    Shadow(
-                                      offset: Offset(2, 2),
-                                      blurRadius: 0,
-                                      color: Colors.black,
-                                    ),
-                                  ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (!mostrandoPregunta) ...[
                           SizedBox(
                             width: wheelSize + 60,
                             height: wheelSize + 70,
@@ -724,7 +994,7 @@ class _RuletaPageState extends State<RuletaPage>
                               clipBehavior: Clip.none,
                               alignment: Alignment.center,
                               children: [
-                                if (cargando)
+                                if (_cargando)
                                   SizedBox(
                                     width: wheelSize,
                                     height: wheelSize,
@@ -736,27 +1006,41 @@ class _RuletaPageState extends State<RuletaPage>
                                       ),
                                     ),
                                   )
+                                else if (_hayError)
+                                  SizedBox(
+                                    width: wheelSize,
+                                    height: wheelSize,
+                                    child: Center(
+                                      child: _ComicButton(
+                                        text: 'REINTENTAR',
+                                        variant: _ButtonVariant.blanco,
+                                        disabled: false,
+                                        onTap: () => _cargarNivel(_nivel),
+                                      ),
+                                    ),
+                                  )
                                 else
                                   Transform.rotate(
                                     angle: _angle,
                                     child: CustomPaint(
                                       size: Size(wheelSize, wheelSize),
                                       painter: _WheelComicPainter(
-                                        items: items,
+                                        items: _items,
                                         modoClasico: _modoClasico,
                                       ),
                                     ),
                                   ),
-                                Positioned(
-                                  right: 2,
-                                  child: Transform.rotate(
-                                    angle: (pi / 2) + _punteroWiggle,
-                                    child: CustomPaint(
-                                      size: const Size(64, 46),
-                                      painter: _PointerComicPainter(),
+                                if (!_hayError)
+                                  Positioned(
+                                    right: 2,
+                                    child: Transform.rotate(
+                                      angle: (pi / 2) + _punteroWiggle,
+                                      child: CustomPaint(
+                                        size: const Size(64, 46),
+                                        painter: _PointerComicPainter(),
+                                      ),
                                     ),
                                   ),
-                                ),
                               ],
                             ),
                           ),
@@ -769,9 +1053,10 @@ class _RuletaPageState extends State<RuletaPage>
                                   variant: _ButtonVariant.blanco,
                                   disabled:
                                       _girando ||
-                                      cargando ||
-                                      _procesandoFlujo ||
-                                      items.isEmpty,
+                                      _cargando ||
+                                      _procesando ||
+                                      _items.isEmpty ||
+                                      _hayError,
                                   onTap: _spin,
                                 ),
                               ),
@@ -780,8 +1065,8 @@ class _RuletaPageState extends State<RuletaPage>
                                 child: _ComicButton(
                                   text: 'REINICIAR',
                                   variant: _ButtonVariant.negro,
-                                  disabled: _girando || _procesandoFlujo,
-                                  onTap: _resetTotalManual,
+                                  disabled: _girando || _procesando,
+                                  onTap: _reiniciarJuego,
                                 ),
                               ),
                             ],
@@ -793,24 +1078,32 @@ class _RuletaPageState extends State<RuletaPage>
                           ),
                         ] else ...[
                           const SizedBox(height: 10),
-                          _QuestionBubbleComic(texto: preguntaTexto),
-                          const SizedBox(height: 14),
-                          Column(
-                            children: respuestas.map((r) {
-                              final id = r['id'] as int;
-                              final texto = r['texto_respuesta'] as String;
-                              final selected = respuestaSeleccionadaId == id;
-
-                              return Padding(
+                          Text(
+                            'RESPONDE LA PREGUNTA',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: titleColor,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (_cargando)
+                            const CircularProgressIndicator(color: Colors.white)
+                          else if (_preguntaActual != null) ...[
+                            _QuestionBubbleComic(texto: _preguntaActual!.texto),
+                            const SizedBox(height: 14),
+                            ..._preguntaActual!.respuestas.map(
+                              (r) => Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: _AnswerOptionComic(
-                                  texto: texto,
-                                  selected: selected,
-                                  onTap: () => _guardarResultadoCompleto(id),
+                                  texto: r.texto,
+                                  selected: _respuestaSeleccionadaId == r.id,
+                                  onTap: () => _guardarRespuesta(r.id),
                                 ),
-                              );
-                            }).toList(),
-                          ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           if (_estado.isNotEmpty)
                             _MiniStatusComic(texto: _estado),
@@ -828,7 +1121,7 @@ class _RuletaPageState extends State<RuletaPage>
   }
 }
 
-// ================== BOTÓN ==================
+// ================== WIDGETS ==================
 
 enum _ButtonVariant { blanco, negro }
 
@@ -888,64 +1181,6 @@ class _ComicButton extends StatelessWidget {
   }
 }
 
-// ================== INFO CARD ==================
-
-class _InfoCardComic extends StatelessWidget {
-  final String titulo;
-  final String valor;
-
-  const _InfoCardComic({required this.titulo, required this.valor});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 90,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black, width: 5),
-        boxShadow: const [
-          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            titulo,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.w900,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: Center(
-              child: Text(
-                valor,
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 11,
-                  height: 1.1,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ================== RESULTADO ==================
-
 class _ResultadoComic extends StatelessWidget {
   final String valor;
   final String estado;
@@ -995,6 +1230,7 @@ class _ResultadoComic extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               estado,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.black,
                 fontWeight: FontWeight.w800,
@@ -1006,8 +1242,6 @@ class _ResultadoComic extends StatelessWidget {
     );
   }
 }
-
-// ================== PREGUNTA ==================
 
 class _QuestionBubbleComic extends StatelessWidget {
   final String texto;
@@ -1112,10 +1346,9 @@ class _MiniStatusComic extends StatelessWidget {
   }
 }
 
-// ================== BANNER ==================
-
 class _BannerComic extends StatelessWidget {
   final String text;
+
   const _BannerComic({required this.text});
 
   @override
@@ -1143,8 +1376,6 @@ class _BannerComic extends StatelessWidget {
   }
 }
 
-// ================== FONDO ==================
-
 class _ComicDotsBackground extends StatelessWidget {
   final bool modoClasico;
 
@@ -1161,23 +1392,21 @@ class _ComicDotsBackground extends StatelessWidget {
 class _PointerComicPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
     final path = Path()
-      ..moveTo(w / 2, h)
+      ..moveTo(size.width / 2, size.height)
       ..lineTo(0, 0)
-      ..lineTo(w, 0)
+      ..lineTo(size.width, 0)
       ..close();
 
-    final fill = Paint()..color = Colors.white;
-    final stroke = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6;
+    canvas.drawPath(path, Paint()..color = Colors.white);
 
-    canvas.drawPath(path, fill);
-    canvas.drawPath(path, stroke);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6,
+    );
   }
 
   @override
@@ -1201,7 +1430,7 @@ class _WheelComicPainter extends CustomPainter {
     final r = size.width / 2;
     final rect = Rect.fromCircle(center: c, radius: r);
 
-    final baseColors = <Color>[
+    final colors = <Color>[
       const Color(0xFFFFD60A),
       const Color(0xFFFF3B30),
       const Color(0xFF34C759),
@@ -1213,23 +1442,28 @@ class _WheelComicPainter extends CustomPainter {
     ];
 
     for (int i = 0; i < n; i++) {
-      final start = -pi / 2 + (i * slice);
+      final start = -pi / 2 + i * slice;
 
-      Color col = baseColors[i % baseColors.length];
+      Color col = colors[i % colors.length];
+
       if (modoClasico) {
         final g = ((col.red * 0.3) + (col.green * 0.59) + (col.blue * 0.11))
             .round();
         col = Color.fromARGB(255, g, g, g);
       }
 
-      final fillPaint = Paint()..color = col;
-      canvas.drawArc(rect, start, slice, true, fillPaint);
+      canvas.drawArc(rect, start, slice, true, Paint()..color = col);
 
-      final border = Paint()
-        ..color = Colors.black
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2;
-      canvas.drawArc(rect, start, slice, true, border);
+      canvas.drawArc(
+        rect,
+        start,
+        slice,
+        true,
+        Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2,
+      );
 
       final angle = start + slice / 2;
       final label = items[i];
@@ -1238,7 +1472,7 @@ class _WheelComicPainter extends CustomPainter {
         text: TextSpan(
           text: label,
           style: TextStyle(
-            fontSize: _fontSizeForText(label),
+            fontSize: _fontSize(label),
             fontWeight: FontWeight.w900,
             color: modoClasico ? Colors.white : Colors.black,
           ),
@@ -1247,12 +1481,11 @@ class _WheelComicPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: r * 0.52);
 
-      final radiusText = r * 0.63;
-      final centerX = c.dx + cos(angle) * radiusText;
-      final centerY = c.dy + sin(angle) * radiusText;
+      final cx = c.dx + cos(angle) * r * 0.63;
+      final cy = c.dy + sin(angle) * r * 0.63;
 
       canvas.save();
-      canvas.translate(centerX, centerY);
+      canvas.translate(cx, cy);
       canvas.rotate(angle);
       tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
       canvas.restore();
@@ -1260,29 +1493,37 @@ class _WheelComicPainter extends CustomPainter {
 
     final ringColor = modoClasico ? Colors.black : Colors.white;
 
-    final ringOuter = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = r * 0.08
-      ..color = ringColor;
-    canvas.drawCircle(c, r * 0.97, ringOuter);
+    canvas.drawCircle(
+      c,
+      r * 0.97,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.08
+        ..color = ringColor,
+    );
 
-    final ringOuterBorder = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..color = Colors.black;
-    canvas.drawCircle(c, r * 0.97, ringOuterBorder);
+    canvas.drawCircle(
+      c,
+      r * 0.97,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..color = Colors.black,
+    );
 
-    final centerFill = Paint()..color = Colors.white;
-    canvas.drawCircle(c, r * 0.14, centerFill);
+    canvas.drawCircle(c, r * 0.14, Paint()..color = Colors.white);
 
-    final centerBorder = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..color = Colors.black;
-    canvas.drawCircle(c, r * 0.14, centerBorder);
+    canvas.drawCircle(
+      c,
+      r * 0.14,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..color = Colors.black,
+    );
   }
 
-  double _fontSizeForText(String text) {
+  double _fontSize(String text) {
     if (text.length <= 8) return 15;
     if (text.length <= 12) return 13;
     if (text.length <= 18) return 11.5;
@@ -1323,12 +1564,14 @@ class _DotsPainter extends CustomPainter {
         if (distToWheel <= clearRadius) continue;
 
         double cornerStrength = 0.0;
+
         for (final c in corners) {
-          final d = (p - c).distance;
-          final influence = (1.0 - (d / (size.longestSide * 0.95))).clamp(
-            0.0,
-            1.0,
-          );
+          final influence =
+              (1.0 - ((p - c).distance / (size.longestSide * 0.95))).clamp(
+                0.0,
+                1.0,
+              );
+
           if (influence > cornerStrength) {
             cornerStrength = influence;
           }
@@ -1350,8 +1593,11 @@ class _DotsPainter extends CustomPainter {
 
         final radius = 1.0 + (3.4 * strength);
 
-        final paint = Paint()..color = Colors.black.withOpacity(opacity);
-        canvas.drawCircle(p, radius, paint);
+        canvas.drawCircle(
+          p,
+          radius,
+          Paint()..color = Colors.black.withOpacity(opacity),
+        );
       }
     }
   }
@@ -1365,20 +1611,21 @@ class _DotsPainter extends CustomPainter {
 class _BubbleTailPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final fill = Paint()..color = Colors.white;
-    final stroke = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5;
-
     final path = Path()
       ..moveTo(size.width * 0.18, size.height)
       ..lineTo(size.width * 0.24, size.height + 16)
       ..lineTo(size.width * 0.30, size.height)
       ..close();
 
-    canvas.drawPath(path, fill);
-    canvas.drawPath(path, stroke);
+    canvas.drawPath(path, Paint()..color = Colors.white);
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5,
+    );
   }
 
   @override
