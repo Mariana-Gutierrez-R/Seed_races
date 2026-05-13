@@ -39,14 +39,48 @@ class RespuestaModel {
   const RespuestaModel({required this.id, required this.texto});
 }
 
-class RespuestaPendiente {
-  final int preguntaId;
-  final int respuestaId;
+class PersonajeModel {
+  final int? idCharacter;
+  final String characterName;
+  final String originName;
+  final String categoryName;
+  final String raceName;
+  final String subraceName;
+  final String roleName;
+  final String weaponName;
+  final String damageTypeName;
+  final String moralityName;
+  final String threatLevelName;
 
-  const RespuestaPendiente({
-    required this.preguntaId,
-    required this.respuestaId,
+  const PersonajeModel({
+    required this.idCharacter,
+    required this.characterName,
+    required this.originName,
+    required this.categoryName,
+    required this.raceName,
+    required this.subraceName,
+    required this.roleName,
+    required this.weaponName,
+    required this.damageTypeName,
+    required this.moralityName,
+    required this.threatLevelName,
   });
+
+  factory PersonajeModel.fromJson(Map<String, dynamic> json) {
+    return PersonajeModel(
+      idCharacter: json['id_character'] as int?,
+      characterName: json['character_name']?.toString() ?? 'Sin nombre',
+      originName: json['origin_name']?.toString() ?? '-',
+      categoryName: json['category_name']?.toString() ?? '-',
+      raceName: json['race_name']?.toString() ?? '-',
+      subraceName: json['subrace_name']?.toString() ?? '-',
+      roleName: json['role_name']?.toString() ?? '-',
+      weaponName: json['weapon_name']?.toString() ?? '-',
+      damageTypeName: json['damage_type_name']?.toString() ?? '-',
+      moralityName: json['morality_name']?.toString() ?? '-',
+      threatLevelName: json['threat_level_name']?.toString() ?? '-',
+    );
+  }
 }
 
 class EstadoJuego {
@@ -249,14 +283,8 @@ class ApiService {
     return List<String>.from(d['niveles_amenaza'] ?? []);
   }
 
-  static Future<String?> decidirEvento(
-    String eventoActual, {
-    bool ruletaCompleta = false,
-  }) async {
-    final d = await _get('/decidir-evento', {
-      'evento_actual': eventoActual,
-      'ruleta_completa': ruletaCompleta ? 'true' : 'false',
-    });
+  static Future<String?> decidirEvento(String eventoActual) async {
+    final d = await _get('/decidir-evento', {'evento_actual': eventoActual});
 
     return d['siguiente'] as String?;
   }
@@ -278,13 +306,21 @@ class ApiService {
     );
   }
 
-  static Future<void> guardarResultado({
-    required EstadoJuego juego,
+  static Future<void> guardarPregunta({
     required int preguntaId,
     required int respuestaId,
   }) async {
     await _post(
-      '/guardar-resultado-completo',
+      '/guardar-pregunta',
+      body: {'pregunta_id': preguntaId, 'respuesta_id': respuestaId},
+    );
+  }
+
+  static Future<PersonajeModel?> guardarRuleta({
+    required EstadoJuego juego,
+  }) async {
+    final d = await _post(
+      '/guardar-ruleta',
       body: {
         'origin': juego.origin,
         'category': juego.category,
@@ -295,10 +331,16 @@ class ApiService {
         'damage_type': juego.damageType,
         'morality': juego.morality,
         'threat_level': juego.threatLevel,
-        'pregunta_id': preguntaId,
-        'respuesta_id': respuestaId,
       },
     );
+
+    final personaje = d['personaje'];
+
+    if (personaje is Map<String, dynamic>) {
+      return PersonajeModel.fromJson(personaje);
+    }
+
+    return null;
   }
 
   static Future<void> reiniciarJuego() async {
@@ -322,13 +364,13 @@ class _RuletaPageState extends State<RuletaPage>
   NivelRuleta? _nivelPendiente;
 
   List<String> _items = [];
-  final List<RespuestaPendiente> _respuestasPendientes = [];
 
   bool _cargando = true;
   bool _girando = false;
   bool _procesando = false;
   bool _hayError = false;
   bool _mostrandoPregunta = false;
+  bool _mostrandoLobby = false;
 
   String _resultadoFinal = '-';
   String _resultadoEnVivo = '-';
@@ -336,6 +378,7 @@ class _RuletaPageState extends State<RuletaPage>
 
   PreguntaModel? _preguntaActual;
   int? _respuestaSeleccionadaId;
+  PersonajeModel? _personajeFinal;
 
   late final AnimationController _controller;
   final Random _rand = Random();
@@ -537,6 +580,7 @@ class _RuletaPageState extends State<RuletaPage>
       _cargando = true;
       _hayError = false;
       _mostrandoPregunta = false;
+      _mostrandoLobby = false;
       _nivel = nivel;
       _estado = '';
     });
@@ -579,6 +623,8 @@ class _RuletaPageState extends State<RuletaPage>
       setState(() {
         _items = lista;
         _cargando = false;
+        _procesando = false;
+        _girando = false;
         _resultadoEnVivo = lista.isNotEmpty ? lista.first : '-';
         _resultadoFinal = lista.isNotEmpty ? lista.first : '-';
       });
@@ -602,6 +648,7 @@ class _RuletaPageState extends State<RuletaPage>
       _cargando = true;
       _hayError = false;
       _mostrandoPregunta = true;
+      _mostrandoLobby = false;
       _estado = '';
     });
 
@@ -638,7 +685,7 @@ class _RuletaPageState extends State<RuletaPage>
 
     setState(() {
       _procesando = true;
-      _estado = 'Procesando...';
+      _estado = 'Resultado: $selected';
     });
 
     final nuevoJuego = _actualizarJuego(selected);
@@ -648,18 +695,17 @@ class _RuletaPageState extends State<RuletaPage>
     _nivelPendiente = siguienteNivel;
 
     try {
-      final siguienteEvento = await ApiService.decidirEvento(
-        'ruleta',
-        ruletaCompleta: _nivel == NivelRuleta.nivelAmenaza,
-      );
+      await ApiService.decidirEvento('ruleta');
+
+      if (siguienteNivel == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
+        await _guardarRuletaYMostrarLobby(nuevoJuego);
+        return;
+      }
+
+      final siguienteEvento = await ApiService.decidirEvento('none');
 
       if (siguienteEvento == 'pregunta') {
-        if (mounted) {
-          setState(() {
-            _estado = 'Resultado: $selected';
-          });
-        }
-
         await Future<void>.delayed(const Duration(milliseconds: 1000));
         await _cargarPregunta();
         return;
@@ -668,12 +714,6 @@ class _RuletaPageState extends State<RuletaPage>
       if (siguienteEvento == 'ruleta') {
         await Future<void>.delayed(const Duration(milliseconds: 450));
         await _continuarRuleta();
-        return;
-      }
-
-      if (siguienteEvento == 'reiniciar') {
-        await _guardarPendientesSiCompleto();
-        await _resetVisual();
         return;
       }
 
@@ -691,7 +731,7 @@ class _RuletaPageState extends State<RuletaPage>
         });
       }
     } finally {
-      if (mounted && !_mostrandoPregunta) {
+      if (mounted && !_mostrandoPregunta && !_mostrandoLobby) {
         setState(() {
           _procesando = false;
           _cargando = false;
@@ -710,15 +750,11 @@ class _RuletaPageState extends State<RuletaPage>
       _estado = 'Guardando...';
     });
 
-    _respuestasPendientes.add(
-      RespuestaPendiente(
+    try {
+      await ApiService.guardarPregunta(
         preguntaId: _preguntaActual!.id,
         respuestaId: respuestaId,
-      ),
-    );
-
-    try {
-      await _guardarPendientesSiCompleto();
+      );
 
       final siguienteEvento = await ApiService.decidirEvento('pregunta');
 
@@ -731,12 +767,6 @@ class _RuletaPageState extends State<RuletaPage>
       if (siguienteEvento == 'ruleta') {
         await Future<void>.delayed(const Duration(milliseconds: 450));
         await _continuarRuleta();
-        return;
-      }
-
-      if (siguienteEvento == 'reiniciar') {
-        await _guardarPendientesSiCompleto();
-        await _resetVisual();
         return;
       }
 
@@ -754,7 +784,7 @@ class _RuletaPageState extends State<RuletaPage>
         });
       }
     } finally {
-      if (mounted && !_mostrandoPregunta) {
+      if (mounted && !_mostrandoPregunta && !_mostrandoLobby) {
         setState(() {
           _procesando = false;
           _cargando = false;
@@ -764,24 +794,42 @@ class _RuletaPageState extends State<RuletaPage>
     }
   }
 
-  Future<void> _guardarPendientesSiCompleto() async {
-    if (!_juego.completo || _respuestasPendientes.isEmpty) return;
-
-    final pendientes = List<RespuestaPendiente>.from(_respuestasPendientes);
-
-    for (final r in pendientes) {
-      await ApiService.guardarResultado(
-        juego: _juego,
-        preguntaId: r.preguntaId,
-        respuestaId: r.respuestaId,
-      );
-    }
-
-    _respuestasPendientes.clear();
+  Future<void> _guardarRuletaYMostrarLobby(EstadoJuego juegoFinal) async {
+    if (!juegoFinal.completo) return;
 
     if (mounted) {
       setState(() {
-        _estado = 'Guardado ✅';
+        _cargando = true;
+        _procesando = true;
+        _estado = 'Guardando personaje...';
+      });
+    }
+
+    try {
+      final personaje = await ApiService.guardarRuleta(juego: juegoFinal);
+
+      if (!mounted) return;
+
+      setState(() {
+        _personajeFinal = personaje;
+        _mostrandoLobby = true;
+        _mostrandoPregunta = false;
+        _cargando = false;
+        _procesando = false;
+        _girando = false;
+        _estado = personaje == null
+            ? 'Personaje guardado, pero no hubo coincidencia exacta'
+            : 'Personaje generado ✅';
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _cargando = false;
+        _procesando = false;
+        _girando = false;
+        _hayError = true;
+        _estado = 'Error guardando ruleta ❌';
       });
     }
   }
@@ -792,8 +840,7 @@ class _RuletaPageState extends State<RuletaPage>
       return;
     }
 
-    await _guardarPendientesSiCompleto();
-    await _resetVisual();
+    await _guardarRuletaYMostrarLobby(_juego);
   }
 
   Future<void> _resetVisual() async {
@@ -804,8 +851,10 @@ class _RuletaPageState extends State<RuletaPage>
       _juego = const EstadoJuego();
       _nivelPendiente = null;
       _mostrandoPregunta = false;
+      _mostrandoLobby = false;
       _preguntaActual = null;
       _respuestaSeleccionadaId = null;
+      _personajeFinal = null;
       _estado = '';
       _hayError = false;
       _procesando = false;
@@ -829,7 +878,6 @@ class _RuletaPageState extends State<RuletaPage>
     try {
       await ApiService.reiniciarJuego();
 
-      _respuestasPendientes.clear();
       _cambiarFondo();
 
       await _resetVisual();
@@ -851,6 +899,12 @@ class _RuletaPageState extends State<RuletaPage>
     }
   }
 
+  void _verImagenPersonaje() {
+    setState(() {
+      _estado = 'Imagen pendiente de integración 🖼️';
+    });
+  }
+
   // ================== ACTIONS ==================
 
   Future<void> _spin() async {
@@ -859,6 +913,7 @@ class _RuletaPageState extends State<RuletaPage>
         _procesando ||
         _items.isEmpty ||
         _mostrandoPregunta ||
+        _mostrandoLobby ||
         _hayError) {
       return;
     }
@@ -931,7 +986,15 @@ class _RuletaPageState extends State<RuletaPage>
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                        if (!_mostrandoPregunta) ...[
+                        if (_mostrandoLobby) ...[
+                          _LobbyComic(
+                            personaje: _personajeFinal,
+                            juego: _juego,
+                            estado: _estado,
+                            onVerImagen: _verImagenPersonaje,
+                            onVolverTirar: _reiniciarJuego,
+                          ),
+                        ] else if (!_mostrandoPregunta) ...[
                           Text(
                             'RULETA CÓMIC',
                             textAlign: TextAlign.center,
@@ -1237,6 +1300,148 @@ class _ResultadoComic extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LobbyComic extends StatelessWidget {
+  final PersonajeModel? personaje;
+  final EstadoJuego juego;
+  final String estado;
+  final VoidCallback onVerImagen;
+  final VoidCallback onVolverTirar;
+
+  const _LobbyComic({
+    required this.personaje,
+    required this.juego,
+    required this.estado,
+    required this.onVerImagen,
+    required this.onVolverTirar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final nombre = personaje?.characterName ?? 'Sin coincidencia exacta';
+
+    return Column(
+      children: [
+        const SizedBox(height: 18),
+        const _BannerComic(text: 'PERSONAJE GENERADO'),
+        const SizedBox(height: 18),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.black, width: 5),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black,
+                blurRadius: 0,
+                offset: Offset(5, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Text(
+                nombre.toUpperCase(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _LobbyRow(label: 'ORIGEN', value: juego.origin ?? '-'),
+              _LobbyRow(label: 'CATEGORÍA', value: juego.category ?? '-'),
+              _LobbyRow(label: 'RAZA', value: juego.race ?? '-'),
+              _LobbyRow(label: 'SUBRAZA', value: juego.subrace ?? '-'),
+              _LobbyRow(label: 'ROL', value: juego.role ?? '-'),
+              _LobbyRow(label: 'ARMA', value: juego.weapon ?? '-'),
+              _LobbyRow(label: 'DAÑO', value: juego.damageType ?? '-'),
+              _LobbyRow(label: 'MORALIDAD', value: juego.morality ?? '-'),
+              _LobbyRow(label: 'AMENAZA', value: juego.threatLevel ?? '-'),
+              if (estado.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  estado,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Expanded(
+              child: _ComicButton(
+                text: 'VER IMAGEN',
+                variant: _ButtonVariant.blanco,
+                disabled: false,
+                onTap: onVerImagen,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ComicButton(
+                text: 'VOLVER A TIRAR',
+                variant: _ButtonVariant.negro,
+                disabled: false,
+                onTap: onVolverTirar,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _LobbyRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _LobbyRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+          ),
         ],
       ),
     );
