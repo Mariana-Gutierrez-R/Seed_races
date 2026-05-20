@@ -35,14 +35,43 @@ class GiroService:
             connection_timeout=5,
         )
 
-    def create_session(self):
+    def create_session(self, id_usuario=None):
         conn = self.get_db_connection()
         cur = conn.cursor(buffered=True)
 
         try:
-            cur.execute("INSERT INTO sesion_juego () VALUES ()")
+            cur.execute("""
+                INSERT INTO sesion_juego (
+                    id_usuario
+                )
+                VALUES (%s)
+            """, (
+                id_usuario,
+            ))
             conn.commit()
             return cur.lastrowid
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_usuario_from_sesion(self, id_sesion):
+        if not id_sesion:
+            return None
+
+        conn = self.get_db_connection()
+        cur = conn.cursor(dictionary=True, buffered=True)
+
+        try:
+            cur.execute("""
+                SELECT id_usuario
+                FROM sesion_juego
+                WHERE id_sesion = %s
+                LIMIT 1
+            """, (
+                id_sesion,
+            ))
+            sesion = cur.fetchone()
+            return sesion["id_usuario"] if sesion else None
         finally:
             cur.close()
             conn.close()
@@ -118,13 +147,16 @@ class GiroService:
             cur.close()
             conn.close()
 
-    def reset_game(self):
+    def reset_game(self, data=None):
+        data = data or {}
+        id_usuario = data.get("id_usuario")
+
         control = self.get_control_state()
 
         if not control:
             return {"error": "no existe control_juego"}, 404
 
-        nueva_sesion = self.create_session()
+        nueva_sesion = self.create_session(id_usuario)
 
         self.update_control_state(
             id_control=control["id_control"],
@@ -139,6 +171,7 @@ class GiroService:
         return {
             "mensaje": "Juego reiniciado correctamente",
             "id_sesion": nueva_sesion,
+            "id_usuario": id_usuario,
             "preguntas_restantes": CANTIDAD_PREGUNTAS,
             "categorias_restantes": CANTIDAD_RULETAS,
             "preguntas_respondidas": "",
@@ -408,6 +441,10 @@ class GiroService:
                 "ids": ids,
             }, 400
 
+        id_usuario = data.get("id_usuario")
+        if id_usuario is None:
+            id_usuario = self.get_usuario_from_sesion(control["id_sesion"])
+
         conn = self.get_db_connection()
         cur = conn.cursor(buffered=True)
 
@@ -415,6 +452,7 @@ class GiroService:
             cur.execute("""
                 INSERT INTO registro_ruletas (
                     id_sesion,
+                    id_usuario,
                     id_origin,
                     id_category,
                     id_race,
@@ -425,9 +463,10 @@ class GiroService:
                     id_morality,
                     id_threat_level
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 control["id_sesion"],
+                id_usuario,
                 ids["id_origin"],
                 ids["id_category"],
                 ids["id_race"],
@@ -446,6 +485,7 @@ class GiroService:
             return {
                 "mensaje": "Ruleta guardada OK",
                 "id_sesion": control["id_sesion"],
+                "id_usuario": id_usuario,
                 "id_registro_ruleta": registro_id,
                 "ids": ids,
                 "personaje": personaje,
@@ -466,6 +506,10 @@ class GiroService:
         if not pregunta_id or not respuesta_id:
             return {"error": "faltan datos de pregunta o respuesta"}, 400
 
+        id_usuario = data.get("id_usuario")
+        if id_usuario is None:
+            id_usuario = self.get_usuario_from_sesion(control["id_sesion"])
+
         conn = self.get_db_connection()
         cur = conn.cursor(buffered=True)
 
@@ -473,12 +517,14 @@ class GiroService:
             cur.execute("""
                 INSERT INTO registro_preguntas (
                     id_sesion,
+                    id_usuario,
                     id_pregunta,
                     id_respuesta
                 )
-                VALUES (%s, %s, %s)
+                VALUES (%s, %s, %s, %s)
             """, (
                 control["id_sesion"],
+                id_usuario,
                 pregunta_id,
                 respuesta_id,
             ))
@@ -488,6 +534,7 @@ class GiroService:
             return {
                 "mensaje": "Pregunta guardada OK",
                 "id_sesion": control["id_sesion"],
+                "id_usuario": id_usuario,
                 "id_registro_pregunta": cur.lastrowid,
             }, 200
         finally:
@@ -755,7 +802,8 @@ def guardar_pregunta():
 
 @app.post("/reiniciar-juego")
 def reiniciar_juego():
-    result, status = game_service.reset_game()
+    data = request.get_json(force=False, silent=True) or {}
+    result, status = game_service.reset_game(data)
     return jsonify(result), status
 
 
@@ -778,6 +826,7 @@ def ver_historial():
             SELECT
                 rr.id_registro_ruleta,
                 rr.id_sesion,
+                rr.id_usuario,
                 rr.fecha_creacion,
                 rr.fecha_actualizacion,
                 rr.id_origin,
@@ -799,6 +848,7 @@ def ver_historial():
             SELECT
                 rp.id_registro_pregunta,
                 rp.id_sesion,
+                rp.id_usuario,
                 rp.fecha_creacion,
                 rp.fecha_actualizacion,
                 rp.id_pregunta,

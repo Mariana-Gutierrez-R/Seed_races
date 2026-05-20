@@ -3,19 +3,515 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 void main() => runApp(const ComicRuletaApp());
 
-class ComicRuletaApp extends StatelessWidget {
+class ComicRuletaApp extends StatefulWidget {
   const ComicRuletaApp({super.key});
+
+  @override
+  State<ComicRuletaApp> createState() => _ComicRuletaAppState();
+}
+
+class _ComicRuletaAppState extends State<ComicRuletaApp> {
+  bool _verificandoSesion = true;
+  bool _logueado = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _verificarSesionGuardada();
+  }
+
+  Future<void> _verificarSesionGuardada() async {
+    final idUsuario = await AuthService.getIdUsuario();
+
+    if (!mounted) return;
+
+    setState(() {
+      _logueado = idUsuario != null;
+      _verificandoSesion = false;
+    });
+  }
+
+  void _entrarAlJuego() {
+    setState(() {
+      _logueado = true;
+    });
+  }
+
+  Future<void> _cerrarSesion() async {
+    await AuthService.logout();
+
+    if (!mounted) return;
+
+    setState(() {
+      _logueado = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(brightness: Brightness.dark, useMaterial3: false),
-      home: const RuletaPage(),
+      home: _verificandoSesion
+          ? const _AuthLoadingComic()
+          : _logueado
+          ? RuletaPage(onLogout: _cerrarSesion)
+          : LoginPage(onLoginOk: _entrarAlJuego),
     );
   }
+}
+
+class _AuthLoadingComic extends StatelessWidget {
+  const _AuthLoadingComic();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFFFFD60A),
+      body: Center(
+        child: Text(
+          'CARGANDO...',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ================== AUTH SERVICE ==================
+
+class AuthService {
+  static const String baseUrl = 'http://10.0.2.2:8001';
+
+  static Future<Map<String, dynamic>> registrar({
+    required String nombreUsuario,
+    required String correo,
+    required String password,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/registro'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'nombre_usuario': nombreUsuario,
+            'correo': correo,
+            'password': password,
+          }),
+        )
+        .timeout(const Duration(seconds: 8));
+
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception(data['error'] ?? 'Error registrando usuario');
+    }
+
+    return data;
+  }
+
+  static Future<Map<String, dynamic>> login({
+    required String correo,
+    required String password,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/login'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'correo': correo, 'password': password}),
+        )
+        .timeout(const Duration(seconds: 8));
+
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception(data['error'] ?? 'Error iniciando sesión');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final usuario = data['usuario'] as Map<String, dynamic>;
+
+    await prefs.setString('token', data['token'].toString());
+    await prefs.setInt('id_usuario', usuario['id_usuario'] as int);
+    await prefs.setString(
+      'nombre_usuario',
+      usuario['nombre_usuario'].toString(),
+    );
+    await prefs.setString('correo', usuario['correo'].toString());
+
+    return data;
+  }
+
+  static Future<int?> getIdUsuario() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('id_usuario');
+  }
+
+  static Future<String?> getNombreUsuario() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('nombre_usuario');
+  }
+
+  static Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('token');
+  }
+
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
+}
+
+// ================== LOGIN PAGE ==================
+
+class LoginPage extends StatefulWidget {
+  final VoidCallback onLoginOk;
+
+  const LoginPage({super.key, required this.onLoginOk});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  bool modoRegistro = false;
+  bool cargando = false;
+  bool ocultarPassword = true;
+
+  final nombreCtrl = TextEditingController();
+  final correoCtrl = TextEditingController();
+  final passwordCtrl = TextEditingController();
+
+  String mensaje = '';
+
+  @override
+  void dispose() {
+    nombreCtrl.dispose();
+    correoCtrl.dispose();
+    passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _procesar() async {
+    setState(() {
+      cargando = true;
+      mensaje = '';
+    });
+
+    try {
+      if (modoRegistro) {
+        await AuthService.registrar(
+          nombreUsuario: nombreCtrl.text.trim(),
+          correo: correoCtrl.text.trim(),
+          password: passwordCtrl.text.trim(),
+        );
+
+        setState(() {
+          modoRegistro = false;
+          mensaje = 'Usuario registrado. Ahora inicia sesión.';
+        });
+      } else {
+        await AuthService.login(
+          correo: correoCtrl.text.trim(),
+          password: passwordCtrl.text.trim(),
+        );
+
+        widget.onLoginOk();
+      }
+    } catch (e) {
+      setState(() {
+        mensaje = e.toString().replaceAll('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() => cargando = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(color: Color(0xFFFFD60A)),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _AuthComicDots()),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'RULETA CÓMIC',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 38,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 1,
+                          shadows: [
+                            Shadow(offset: Offset(3, 3), color: Colors.black),
+                            Shadow(offset: Offset(-3, 3), color: Colors.black),
+                            Shadow(offset: Offset(3, -3), color: Colors.black),
+                            Shadow(offset: Offset(-3, -3), color: Colors.black),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '¡CREA TU PERSONAJE!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      _AuthComicCard(
+                        child: Column(
+                          children: [
+                            Text(
+                              modoRegistro ? 'CREAR CUENTA' : 'INICIAR SESIÓN',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 26,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            if (modoRegistro)
+                              _AuthComicInput(
+                                controller: nombreCtrl,
+                                label: 'Nombre de usuario',
+                                icon: Icons.person,
+                              ),
+                            if (modoRegistro) const SizedBox(height: 12),
+                            _AuthComicInput(
+                              controller: correoCtrl,
+                              label: 'Correo',
+                              icon: Icons.email,
+                            ),
+                            const SizedBox(height: 12),
+                            _AuthComicInput(
+                              controller: passwordCtrl,
+                              label: 'Contraseña',
+                              icon: Icons.lock,
+                              obscure: ocultarPassword,
+                              suffix: IconButton(
+                                icon: Icon(
+                                  ocultarPassword
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                  color: Colors.black,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    ocultarPassword = !ocultarPassword;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _AuthComicButton(
+                              text: cargando
+                                  ? 'CARGANDO...'
+                                  : (modoRegistro ? 'REGISTRAR' : 'ENTRAR'),
+                              onTap: cargando ? null : _procesar,
+                              dark: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _AuthComicButton(
+                              text: modoRegistro
+                                  ? 'YA TENGO CUENTA'
+                                  : 'CREAR CUENTA',
+                              onTap: cargando
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        modoRegistro = !modoRegistro;
+                                        mensaje = '';
+                                      });
+                                    },
+                              dark: false,
+                            ),
+                            if (mensaje.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              Text(
+                                mensaje,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthComicCard extends StatelessWidget {
+  final Widget child;
+
+  const _AuthComicCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.black, width: 5),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(6, 6)),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _AuthComicInput extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final bool obscure;
+  final Widget? suffix;
+
+  const _AuthComicInput({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.obscure = false,
+    this.suffix,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: Colors.black),
+        suffixIcon: suffix,
+        labelText: label,
+        labelStyle: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.w900,
+        ),
+        filled: true,
+        fillColor: const Color(0xFFFFF3B0),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Colors.black, width: 4),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Colors.black, width: 5),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthComicButton extends StatelessWidget {
+  final String text;
+  final VoidCallback? onTap;
+  final bool dark;
+
+  const _AuthComicButton({
+    required this.text,
+    required this.onTap,
+    required this.dark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.5 : 1,
+        child: Container(
+          height: 54,
+          width: double.infinity,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: dark ? Colors.black : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.black, width: 5),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black,
+                blurRadius: 0,
+                offset: Offset(4, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: dark ? Colors.white : Colors.black,
+              fontWeight: FontWeight.w900,
+              fontSize: 17,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthComicDots extends StatelessWidget {
+  const _AuthComicDots();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _AuthComicDotsPainter());
+  }
+}
+
+class _AuthComicDotsPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black.withOpacity(0.18);
+    const step = 14.0;
+
+    for (double y = 0; y < size.height; y += step) {
+      for (double x = 0; x < size.width; x += step) {
+        canvas.drawCircle(Offset(x, y), 2.2, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ================== MODELS ==================
@@ -310,15 +806,23 @@ class ApiService {
     required int preguntaId,
     required int respuestaId,
   }) async {
+    final idUsuario = await AuthService.getIdUsuario();
+
     await _post(
       '/guardar-pregunta',
-      body: {'pregunta_id': preguntaId, 'respuesta_id': respuestaId},
+      body: {
+        'pregunta_id': preguntaId,
+        'respuesta_id': respuestaId,
+        'id_usuario': idUsuario,
+      },
     );
   }
 
   static Future<PersonajeModel?> guardarRuleta({
     required EstadoJuego juego,
   }) async {
+    final idUsuario = await AuthService.getIdUsuario();
+
     final d = await _post(
       '/guardar-ruleta',
       body: {
@@ -331,6 +835,7 @@ class ApiService {
         'damage_type': juego.damageType,
         'morality': juego.morality,
         'threat_level': juego.threatLevel,
+        'id_usuario': idUsuario,
       },
     );
 
@@ -344,14 +849,18 @@ class ApiService {
   }
 
   static Future<void> reiniciarJuego() async {
-    await _post('/reiniciar-juego');
+    final idUsuario = await AuthService.getIdUsuario();
+
+    await _post('/reiniciar-juego', body: {'id_usuario': idUsuario});
   }
 }
 
 // ================== PAGE ==================
 
 class RuletaPage extends StatefulWidget {
-  const RuletaPage({super.key});
+  final VoidCallback onLogout;
+
+  const RuletaPage({super.key, required this.onLogout});
 
   @override
   State<RuletaPage> createState() => _RuletaPageState();
@@ -695,15 +1204,13 @@ class _RuletaPageState extends State<RuletaPage>
     _nivelPendiente = siguienteNivel;
 
     try {
-      await ApiService.decidirEvento('ruleta');
+      final siguienteEvento = await ApiService.decidirEvento('ruleta');
 
       if (siguienteNivel == null) {
         await Future<void>.delayed(const Duration(milliseconds: 1000));
         await _guardarRuletaYMostrarLobby(nuevoJuego);
         return;
       }
-
-      final siguienteEvento = await ApiService.decidirEvento('none');
 
       if (siguienteEvento == 'pregunta') {
         await Future<void>.delayed(const Duration(milliseconds: 1000));
@@ -986,6 +1493,54 @@ class _RuletaPageState extends State<RuletaPage>
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: PopupMenuButton<String>(
+                            color: Colors.white,
+                            elevation: 8,
+                            icon: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 3,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black,
+                                    blurRadius: 0,
+                                    offset: Offset(3, 3),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.settings,
+                                color: Colors.black,
+                                size: 24,
+                              ),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'logout') {
+                                widget.onLogout();
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'logout',
+                                child: Text(
+                                  'Cerrar sesión',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                         if (_mostrandoLobby) ...[
                           _LobbyComic(
                             personaje: _personajeFinal,
