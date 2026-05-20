@@ -35,6 +35,18 @@ class GiroService:
             connection_timeout=5,
         )
 
+    def create_session(self):
+        conn = self.get_db_connection()
+        cur = conn.cursor(buffered=True)
+
+        try:
+            cur.execute("INSERT INTO sesion_juego () VALUES ()")
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            cur.close()
+            conn.close()
+
     def get_control_state(self):
         conn = self.get_db_connection()
         cur = conn.cursor(dictionary=True, buffered=True)
@@ -43,6 +55,7 @@ class GiroService:
             cur.execute("""
                 SELECT
                     id_control,
+                    id_sesion,
                     preguntas_restantes,
                     categorias_restantes,
                     preguntas_respondidas,
@@ -55,6 +68,7 @@ class GiroService:
             control = cur.fetchone()
 
             if control:
+                control["id_sesion"] = int(control["id_sesion"] or 0)
                 control["preguntas_restantes"] = int(control["preguntas_restantes"] or 0)
                 control["categorias_restantes"] = int(control["categorias_restantes"] or 0)
                 control["preguntas_respondidas"] = control["preguntas_respondidas"] or ""
@@ -69,6 +83,7 @@ class GiroService:
     def update_control_state(
         self,
         id_control,
+        id_sesion,
         preguntas_restantes,
         categorias_restantes,
         preguntas_respondidas,
@@ -81,7 +96,8 @@ class GiroService:
         try:
             cur.execute("""
                 UPDATE control_juego
-                SET preguntas_restantes = %s,
+                SET id_sesion = %s,
+                    preguntas_restantes = %s,
                     categorias_restantes = %s,
                     preguntas_respondidas = %s,
                     ruletas_respondidas = %s,
@@ -89,6 +105,7 @@ class GiroService:
                     fecha_actualizacion = CURRENT_TIMESTAMP
                 WHERE id_control = %s
             """, (
+                id_sesion,
                 preguntas_restantes,
                 categorias_restantes,
                 preguntas_respondidas,
@@ -107,8 +124,11 @@ class GiroService:
         if not control:
             return {"error": "no existe control_juego"}, 404
 
+        nueva_sesion = self.create_session()
+
         self.update_control_state(
             id_control=control["id_control"],
+            id_sesion=nueva_sesion,
             preguntas_restantes=CANTIDAD_PREGUNTAS,
             categorias_restantes=CANTIDAD_RULETAS,
             preguntas_respondidas="",
@@ -118,6 +138,7 @@ class GiroService:
 
         return {
             "mensaje": "Juego reiniciado correctamente",
+            "id_sesion": nueva_sesion,
             "preguntas_restantes": CANTIDAD_PREGUNTAS,
             "categorias_restantes": CANTIDAD_RULETAS,
             "preguntas_respondidas": "",
@@ -172,6 +193,7 @@ class GiroService:
 
         self.update_control_state(
             id_control=control["id_control"],
+            id_sesion=control["id_sesion"],
             preguntas_restantes=preguntas_restantes,
             categorias_restantes=ruletas_restantes,
             preguntas_respondidas=preguntas_respondidas,
@@ -181,6 +203,7 @@ class GiroService:
 
         return {
             "siguiente": siguiente,
+            "id_sesion": control["id_sesion"],
             "preguntas_restantes": preguntas_restantes,
             "categorias_restantes": ruletas_restantes,
             "preguntas_respondidas": preguntas_respondidas,
@@ -218,15 +241,15 @@ class GiroService:
             if respondidas:
                 placeholders = ",".join(["%s"] * len(respondidas))
                 cur.execute(f"""
-                    SELECT id, texto_pregunta
+                    SELECT id_pregunta, texto_pregunta
                     FROM pregunta
-                    WHERE id NOT IN ({placeholders})
+                    WHERE id_pregunta NOT IN ({placeholders})
                     ORDER BY RAND()
                     LIMIT 1
                 """, tuple(respondidas))
             else:
                 cur.execute("""
-                    SELECT id, texto_pregunta
+                    SELECT id_pregunta, texto_pregunta
                     FROM pregunta
                     ORDER BY RAND()
                     LIMIT 1
@@ -237,7 +260,7 @@ class GiroService:
             if not pregunta:
                 return {"error": "no hay más preguntas sin repetir"}, 404
 
-            respondidas.append(int(pregunta["id"]))
+            respondidas.append(int(pregunta["id_pregunta"]))
             nuevas_preguntas_restantes = max(preguntas_restantes - 1, 0)
 
             if nuevas_preguntas_restantes <= 0:
@@ -247,6 +270,7 @@ class GiroService:
 
             self.update_control_state(
                 id_control=control["id_control"],
+                id_sesion=control["id_sesion"],
                 preguntas_restantes=nuevas_preguntas_restantes,
                 categorias_restantes=ruletas_restantes,
                 preguntas_respondidas=preguntas_respondidas_guardar,
@@ -255,18 +279,25 @@ class GiroService:
             )
 
             cur.execute("""
-                SELECT id, texto_respuesta
+                SELECT id_respuesta, texto_respuesta
                 FROM respuesta
-                WHERE pregunta_id = %s
-                ORDER BY id ASC
-            """, (pregunta["id"],))
+                WHERE id_pregunta = %s
+                ORDER BY id_respuesta ASC
+            """, (pregunta["id_pregunta"],))
 
             respuestas = cur.fetchall()
 
             return {
-                "pregunta_id": pregunta["id"],
+                "id_sesion": control["id_sesion"],
+                "pregunta_id": pregunta["id_pregunta"],
                 "texto_pregunta": pregunta["texto_pregunta"],
-                "respuestas": respuestas,
+                "respuestas": [
+                    {
+                        "id": r["id_respuesta"],
+                        "texto_respuesta": r["texto_respuesta"],
+                    }
+                    for r in respuestas
+                ],
                 "preguntas_restantes": nuevas_preguntas_restantes,
                 "categorias_restantes": ruletas_restantes,
             }, 200
@@ -364,6 +395,11 @@ class GiroService:
             conn.close()
 
     def register_roulette_result(self, data):
+        control = self.get_control_state()
+
+        if not control:
+            return {"error": "no existe control_juego"}, 404
+
         ids = self.resolve_ids(data)
 
         if not all(ids.values()):
@@ -378,6 +414,7 @@ class GiroService:
         try:
             cur.execute("""
                 INSERT INTO registro_ruletas (
+                    id_sesion,
                     id_origin,
                     id_category,
                     id_race,
@@ -388,8 +425,9 @@ class GiroService:
                     id_morality,
                     id_threat_level
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
+                control["id_sesion"],
                 ids["id_origin"],
                 ids["id_category"],
                 ids["id_race"],
@@ -407,6 +445,7 @@ class GiroService:
 
             return {
                 "mensaje": "Ruleta guardada OK",
+                "id_sesion": control["id_sesion"],
                 "id_registro_ruleta": registro_id,
                 "ids": ids,
                 "personaje": personaje,
@@ -416,6 +455,11 @@ class GiroService:
             conn.close()
 
     def register_question_result(self, data):
+        control = self.get_control_state()
+
+        if not control:
+            return {"error": "no existe control_juego"}, 404
+
         pregunta_id = data.get("pregunta_id")
         respuesta_id = data.get("respuesta_id")
 
@@ -428,11 +472,13 @@ class GiroService:
         try:
             cur.execute("""
                 INSERT INTO registro_preguntas (
-                    pregunta_id,
-                    respuesta_id
+                    id_sesion,
+                    id_pregunta,
+                    id_respuesta
                 )
-                VALUES (%s, %s)
+                VALUES (%s, %s, %s)
             """, (
+                control["id_sesion"],
                 pregunta_id,
                 respuesta_id,
             ))
@@ -441,6 +487,7 @@ class GiroService:
 
             return {
                 "mensaje": "Pregunta guardada OK",
+                "id_sesion": control["id_sesion"],
                 "id_registro_pregunta": cur.lastrowid,
             }, 200
         finally:
@@ -547,9 +594,7 @@ def obtener_origenes():
 
 @app.get("/categorias")
 def obtener_categorias():
-    params = {
-        "origin": request.args.get("origin"),
-    }
+    params = {"origin": request.args.get("origin")}
     return jsonify({"categorias": query_distinct("cat.category_name", params)})
 
 
@@ -731,7 +776,8 @@ def ver_historial():
     try:
         cur.execute("""
             SELECT
-                rr.id,
+                rr.id_registro_ruleta,
+                rr.id_sesion,
                 rr.fecha_creacion,
                 rr.fecha_actualizacion,
                 rr.id_origin,
@@ -744,7 +790,7 @@ def ver_historial():
                 rr.id_morality,
                 rr.id_threat_level
             FROM registro_ruletas rr
-            ORDER BY rr.id DESC
+            ORDER BY rr.id_registro_ruleta DESC
             LIMIT %s
         """, (limit,))
         ruletas = cur.fetchall()
@@ -752,15 +798,16 @@ def ver_historial():
         cur.execute("""
             SELECT
                 rp.id_registro_pregunta,
+                rp.id_sesion,
                 rp.fecha_creacion,
                 rp.fecha_actualizacion,
-                rp.pregunta_id,
-                rp.respuesta_id,
+                rp.id_pregunta,
+                rp.id_respuesta,
                 p.texto_pregunta,
                 r.texto_respuesta
             FROM registro_preguntas rp
-            LEFT JOIN pregunta p ON rp.pregunta_id = p.id
-            LEFT JOIN respuesta r ON rp.respuesta_id = r.id
+            LEFT JOIN pregunta p ON rp.id_pregunta = p.id_pregunta
+            LEFT JOIN respuesta r ON rp.id_respuesta = r.id_respuesta
             ORDER BY rp.id_registro_pregunta DESC
             LIMIT %s
         """, (limit,))
