@@ -426,11 +426,8 @@ class _LoginPageState extends State<LoginPage> {
                             : 'TUS PERSONAJES TE ESPERAN',
                       ),
                       const SizedBox(height: 18),
-                      _ComicMascotBox(
-                        text: modoRegistro ? 'PEEP\nCLUB' : 'READY\nPLAYER',
-                        icon: modoRegistro ? Icons.edit : Icons.menu_book,
-                      ),
-                      const SizedBox(height: 16),
+                      _PeepClubAssetHero(modoRegistro: modoRegistro),
+                      const SizedBox(height: 8),
                       if (modoRegistro) ...[
                         _AuthComicInput(
                           controller: nombreCtrl,
@@ -530,6 +527,103 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+}
+
+class _PeepClubAssetHero extends StatelessWidget {
+  final bool modoRegistro;
+
+  const _PeepClubAssetHero({required this.modoRegistro});
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final imageHeight = modoRegistro
+        ? min(screenHeight * 0.34, 315.0)
+        : min(screenHeight * 0.38, 355.0);
+
+    return SizedBox(
+      width: double.infinity,
+      height: imageHeight,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(painter: _HeroGlowPainter()),
+            ),
+          ),
+          Image.asset(
+            'assets/images/peep_club.png',
+            height: imageHeight,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                height: imageHeight * 0.82,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFDF2),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.black, width: 4),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      blurRadius: 0,
+                      offset: Offset(4, 4),
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  'No se encontró:\\nassets/images/peep_club.png',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroGlowPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height * 0.56);
+
+    final glowPaint = Paint()
+      ..shader =
+          RadialGradient(
+            colors: [
+              Colors.white.withOpacity(0.32),
+              Colors.white.withOpacity(0.10),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.48, 1.0],
+          ).createShader(
+            Rect.fromCircle(center: center, radius: size.width * 0.55),
+          );
+
+    canvas.drawCircle(center, size.width * 0.55, glowPaint);
+
+    final shadowPaint = Paint()..color = Colors.black.withOpacity(0.18);
+    final shadowRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height * 0.93),
+      width: size.width * 0.55,
+      height: 18,
+    );
+    canvas.drawOval(shadowRect, shadowPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _AuthComicCard extends StatelessWidget {
