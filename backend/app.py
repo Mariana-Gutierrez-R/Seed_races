@@ -777,6 +777,10 @@ def query_distinct(select_expr, params):
 
 def query_all_values(table_name, name_column):
     allowed = {
+        "origin": "origin_name",
+        "category": "category_name",
+        "race": "race_name",
+        "subrace": "subrace_name",
         "role": "role_name",
         "weapon": "weapon_name",
         "damage_type": "damage_type_name",
@@ -843,6 +847,21 @@ def obtener_subrazas():
         "race": request.args.get("race"),
     }
     return jsonify({"subrazas": query_distinct("s.subrace_name", params)})
+
+
+@app.get("/categorias-todas")
+def obtener_categorias_todas():
+    return jsonify({"categorias": query_all_values("category", "category_name")})
+
+
+@app.get("/razas-todas")
+def obtener_razas_todas():
+    return jsonify({"razas": query_all_values("race", "race_name")})
+
+
+@app.get("/subrazas-todas")
+def obtener_subrazas_todas():
+    return jsonify({"subrazas": query_all_values("subrace", "subrace_name")})
 
 
 @app.get("/roles")
