@@ -71,47 +71,111 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginSocialDemo(String tipo) async {
     setState(() {
-      mensaje = tipo == 'google'
-          ? 'Google todavía no está conectado de forma real. Falta configurar google_sign_in y Google Cloud.'
-          : 'Facebook todavía no está conectado de forma real. Falta configurar flutter_facebook_auth y Meta Developer.';
+      cargando = true;
+      mensaje = '';
     });
+
+    try {
+      if (tipo == 'google') {
+        await AuthService.loginGoogleDemo();
+
+        if (!mounted) return;
+
+        widget.onLoginOk();
+        return;
+      }
+
+      if (tipo == 'facebook') {
+        setState(() {
+          mensaje =
+              'Facebook todavía no está conectado. Primero terminaremos Google Login.';
+        });
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        mensaje = e.toString().replaceAll('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          cargando = false;
+        });
+      }
+    }
   }
 
   Future<void> _mostrarTelefono() async {
-    String? codigoGenerado;
+    bool codigoEnviado = false;
     bool verificando = false;
+
     codigoCtrl.clear();
 
     await showDialog<void>(
       context: context,
-      builder: (context) {
+      barrierDismissible: false,
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
-            Future<void> enviarOVerificar() async {
+          builder: (dialogContext, setModalState) {
+            Future<void> enviarCodigo() async {
               if (verificando) return;
+
               setModalState(() => verificando = true);
 
               try {
-                if (codigoGenerado == null) {
-                  final code = await AuthService.solicitarCodigoTelefono(
-                    telefonoCtrl.text.trim(),
-                  );
-                  codigoCtrl.text = code;
-                  setModalState(() => codigoGenerado = code);
-                } else {
-                  await AuthService.verificarCodigoTelefono(
-                    telefono: telefonoCtrl.text.trim(),
-                    codigo: codigoCtrl.text.trim(),
-                  );
-                  if (context.mounted) Navigator.pop(context);
-                  widget.onLoginOk();
-                }
-              } catch (e) {
-                setState(
-                  () => mensaje = e.toString().replaceAll('Exception: ', ''),
+                await AuthService.solicitarCodigoTelefono(
+                  telefonoCtrl.text.trim(),
                 );
+
+                setModalState(() {
+                  codigoEnviado = true;
+                });
+              } catch (e) {
+                if (!mounted) return;
+
+                setState(() {
+                  mensaje = e.toString().replaceAll('Exception: ', '');
+                });
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
               } finally {
-                setModalState(() => verificando = false);
+                if (dialogContext.mounted) {
+                  setModalState(() => verificando = false);
+                }
+              }
+            }
+
+            Future<void> verificarCodigo() async {
+              if (verificando) return;
+
+              setModalState(() => verificando = true);
+
+              try {
+                await AuthService.verificarCodigoTelefono(
+                  telefono: telefonoCtrl.text.trim(),
+                  codigo: codigoCtrl.text.trim(),
+                );
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (!mounted) return;
+                widget.onLoginOk();
+              } catch (e) {
+                if (!mounted) return;
+
+                setState(() {
+                  mensaje = e.toString().replaceAll('Exception: ', '');
+                });
+              } finally {
+                if (dialogContext.mounted) {
+                  setModalState(() => verificando = false);
+                }
               }
             }
 
@@ -145,15 +209,15 @@ class _LoginPageState extends State<LoginPage> {
                       icon: Icons.phone,
                     ),
                     const SizedBox(height: 12),
-                    if (codigoGenerado != null) ...[
+                    if (codigoEnviado) ...[
                       _AuthComicInput(
                         controller: codigoCtrl,
-                        label: 'Código',
+                        label: 'Código de verificación',
                         icon: Icons.password,
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Modo demo: el código se llena automáticamente. En producción llegaría por SMS.',
+                        'Ingresa el código enviado por SMS o el código de prueba configurado en Firebase.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.black,
@@ -166,10 +230,23 @@ class _LoginPageState extends State<LoginPage> {
                     _ComicMainActionButton(
                       text: verificando
                           ? 'PROCESANDO...'
-                          : (codigoGenerado == null
-                                ? 'ENVIAR CÓDIGO'
-                                : 'VERIFICAR Y ENTRAR'),
-                      onTap: verificando ? null : enviarOVerificar,
+                          : (codigoEnviado
+                                ? 'VERIFICAR Y ENTRAR'
+                                : 'ENVIAR CÓDIGO'),
+                      onTap: verificando
+                          ? null
+                          : (codigoEnviado ? verificarCodigo : enviarCodigo),
+                    ),
+                    const SizedBox(height: 10),
+                    _ComicButton(
+                      text: 'CANCELAR',
+                      variant: _ButtonVariant.negro,
+                      disabled: verificando,
+                      onTap: () {
+                        if (!verificando) {
+                          Navigator.pop(dialogContext);
+                        }
+                      },
                     ),
                   ],
                 ),

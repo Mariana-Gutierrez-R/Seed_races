@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "215024982529",
+    "project_id": "seed-races",
+    "storage_bucket": "seed-races.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:215024982529:android:cf28b6c352fa572060fe00",
+        "android_client_info": {
+          "package_name": "com.example.ruleta_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "215024982529-kicqs79c7lt5el8lc2jm80h1asglmn30.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.ruleta_app",
+            "certificate_hash": "68750baf4f80af866f63fd57ec3fa0904c36af59"
+          }
+        },
+        {
+          "client_id": "215024982529-pq30abfh2q6tshbsttorlaphq6c4q9qq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlM1ix95_Tj9y04ccm1xppn04YXJECFg8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "215024982529-pq30abfh2q6tshbsttorlaphq6c4q9qq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
