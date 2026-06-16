@@ -19,8 +19,6 @@ class _LoginPageState extends State<LoginPage> {
   final nombreCtrl = TextEditingController();
   final correoCtrl = TextEditingController();
   final passwordCtrl = TextEditingController();
-  final telefonoCtrl = TextEditingController(text: '+573001112233');
-  final codigoCtrl = TextEditingController();
 
   String mensaje = '';
 
@@ -29,8 +27,6 @@ class _LoginPageState extends State<LoginPage> {
     nombreCtrl.dispose();
     correoCtrl.dispose();
     passwordCtrl.dispose();
-    telefonoCtrl.dispose();
-    codigoCtrl.dispose();
     super.dispose();
   }
 
@@ -105,157 +101,6 @@ class _LoginPageState extends State<LoginPage> {
         });
       }
     }
-  }
-
-  Future<void> _mostrarTelefono() async {
-    bool codigoEnviado = false;
-    bool verificando = false;
-
-    codigoCtrl.clear();
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setModalState) {
-            Future<void> enviarCodigo() async {
-              if (verificando) return;
-
-              setModalState(() => verificando = true);
-
-              try {
-                await AuthService.solicitarCodigoTelefono(
-                  telefonoCtrl.text.trim(),
-                );
-
-                setModalState(() {
-                  codigoEnviado = true;
-                });
-              } catch (e) {
-                if (!mounted) return;
-
-                setState(() {
-                  mensaje = e.toString().replaceAll('Exception: ', '');
-                });
-
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-              } finally {
-                if (dialogContext.mounted) {
-                  setModalState(() => verificando = false);
-                }
-              }
-            }
-
-            Future<void> verificarCodigo() async {
-              if (verificando) return;
-
-              setModalState(() => verificando = true);
-
-              try {
-                await AuthService.verificarCodigoTelefono(
-                  telefono: telefonoCtrl.text.trim(),
-                  codigo: codigoCtrl.text.trim(),
-                );
-
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-
-                if (!mounted) return;
-                widget.onLoginOk();
-              } catch (e) {
-                if (!mounted) return;
-
-                setState(() {
-                  mensaje = e.toString().replaceAll('Exception: ', '');
-                });
-              } finally {
-                if (dialogContext.mounted) {
-                  setModalState(() => verificando = false);
-                }
-              }
-            }
-
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFDF2),
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: Colors.black, width: 5),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      blurRadius: 0,
-                      offset: Offset(6, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const _ExplosiveTitle(
-                      text: 'ENTRAR CON\nTELÉFONO',
-                      subtitle: 'CÓDIGO DE ACCESO',
-                    ),
-                    const SizedBox(height: 14),
-                    _AuthComicInput(
-                      controller: telefonoCtrl,
-                      label: 'Teléfono',
-                      icon: Icons.phone,
-                    ),
-                    const SizedBox(height: 12),
-                    if (codigoEnviado) ...[
-                      _AuthComicInput(
-                        controller: codigoCtrl,
-                        label: 'Código de verificación',
-                        icon: Icons.password,
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Ingresa el código enviado por SMS o el código de prueba configurado en Firebase.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    _ComicMainActionButton(
-                      text: verificando
-                          ? 'PROCESANDO...'
-                          : (codigoEnviado
-                                ? 'VERIFICAR Y ENTRAR'
-                                : 'ENVIAR CÓDIGO'),
-                      onTap: verificando
-                          ? null
-                          : (codigoEnviado ? verificarCodigo : enviarCodigo),
-                    ),
-                    const SizedBox(height: 10),
-                    _ComicButton(
-                      text: 'CANCELAR',
-                      variant: _ButtonVariant.negro,
-                      disabled: verificando,
-                      onTap: () {
-                        if (!verificando) {
-                          Navigator.pop(dialogContext);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   @override
@@ -363,13 +208,6 @@ class _LoginPageState extends State<LoginPage> {
                         onTap: cargando
                             ? null
                             : () => _loginSocialDemo('facebook'),
-                      ),
-                      const SizedBox(height: 8),
-                      _SocialComicButton(
-                        text: 'Continuar con Teléfono',
-                        icon: Icons.phone,
-                        color: const Color(0xFF34C759),
-                        onTap: cargando ? null : _mostrarTelefono,
                       ),
                       if (mensaje.isNotEmpty) ...[
                         const SizedBox(height: 14),
