@@ -19,12 +19,16 @@ class UniverseSelectPage extends StatefulWidget {
 }
 
 class _UniverseSelectPageState extends State<UniverseSelectPage> {
+  bool _cargando = true;
+  bool _hayError = false;
   String? _universoSeleccionado;
+  List<String> _universos = [];
 
   Color _fondoActual = const Color(0xFFFFD60A);
-  bool _coloresAleatorios = false;
+  bool _coloresAleatorios = true;
   Color _colorFijo = const Color(0xFFFFD60A);
   Set<Color> _coloresRandomActivos = {};
+  String _picoSeleccionado = 'clasico';
 
   final List<Color> _fondos = const [
     Color(0xFF00B7FF),
@@ -35,19 +39,12 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
     Color(0xFFFF9500),
   ];
 
-  final List<String> _universos = const [
-    'Dragon Ball',
-    'DC Comics',
-    'Greek Mythology',
-    'LOTR',
-  ];
-
   @override
   void initState() {
     super.initState();
     _coloresRandomActivos = _fondos.toSet();
-    _universoSeleccionado = _universos.first;
     _cargarPreferencias();
+    _cargarUniversos();
   }
 
   int _colorToInt(Color c) => c.value;
@@ -58,14 +55,16 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
     final aleatorio = prefs.getBool('ajustes_colores_aleatorios');
     final fijo = prefs.getInt('ajustes_color_fijo');
     final random = prefs.getStringList('ajustes_colores_random');
+    final pico = prefs.getString('ajustes_pico_ruleta');
 
     if (!mounted) return;
 
     setState(() {
       if (aleatorio != null) _coloresAleatorios = aleatorio;
-      if (fijo != null) _colorFijo = _intToColor(fijo);
-      _fondoActual = _colorFijo;
-
+      if (fijo != null) {
+        _colorFijo = _intToColor(fijo);
+        if (!_coloresAleatorios) _fondoActual = _colorFijo;
+      }
       if (random != null && random.isNotEmpty) {
         _coloresRandomActivos = random
             .map(int.tryParse)
@@ -73,9 +72,11 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
             .map(_intToColor)
             .toSet();
       }
-
       if (_coloresRandomActivos.isEmpty) {
         _coloresRandomActivos = _fondos.toSet();
+      }
+      if (pico != null && pico.trim().isNotEmpty) {
+        _picoSeleccionado = pico;
       }
     });
   }
@@ -88,34 +89,74 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
       'ajustes_colores_random',
       _coloresRandomActivos.map((c) => _colorToInt(c).toString()).toList(),
     );
+    await prefs.setString('ajustes_pico_ruleta', _picoSeleccionado);
+  }
+
+  Future<void> _cargarUniversos() async {
+    setState(() {
+      _cargando = true;
+      _hayError = false;
+    });
+
+    try {
+      final lista = await ApiService.getOrigenes();
+
+      if (!mounted) return;
+
+      setState(() {
+        _universos = lista;
+        _universoSeleccionado = lista.isNotEmpty ? lista.first : null;
+        _cargando = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _hayError = true;
+        _cargando = false;
+      });
+    }
   }
 
   void _abrirAjustes() {
-    Navigator.of(context).push(
+    Navigator.push(
+      context,
       MaterialPageRoute<void>(
-        builder: (_) => _ModeColorSettingsPage(
+        builder: (context) => _SettingsComicPage(
           fondoActual: _fondoActual,
           colorFijo: _colorFijo,
           coloresAleatorios: _coloresAleatorios,
           fondos: _fondos,
           coloresRandomActivos: _coloresRandomActivos,
-          onLogout: widget.onLogout,
+          picoSeleccionado: _picoSeleccionado,
           onGuardar:
               ({
                 required bool coloresAleatorios,
                 required Color colorFijo,
                 required Color fondoActual,
                 required Set<Color> coloresRandomActivos,
+                required String picoSeleccionado,
               }) async {
                 setState(() {
                   _coloresAleatorios = coloresAleatorios;
                   _colorFijo = colorFijo;
                   _fondoActual = fondoActual;
                   _coloresRandomActivos = coloresRandomActivos;
+                  _picoSeleccionado = picoSeleccionado;
                 });
                 await _guardarPreferencias();
               },
+          onLogout: widget.onLogout,
         ),
+      ),
+    );
+  }
+
+  void _abrirPerfil() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => ProfilePage(onLogout: widget.onLogout),
       ),
     );
   }
@@ -123,6 +164,7 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
   void _continuar() {
     final universo = _universoSeleccionado;
     if (universo == null || universo.trim().isEmpty) return;
+
     widget.onUniversoSeleccionado(universo);
   }
 
@@ -139,13 +181,32 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
               const Positioned.fill(
                 child: _ComicDotsBackground(modoClasico: false),
               ),
+              Positioned(
+                top: 18,
+                left: 18,
+                child: _TopIconButton(
+                  icon: Icons.arrow_back,
+                  onTap: widget.onBack,
+                ),
+              ),
+              Positioned(
+                top: 18,
+                right: 18,
+                child: Row(
+                  children: [
+                    _TopIconButton(icon: Icons.person, onTap: _abrirPerfil),
+                    const SizedBox(width: 10),
+                    _TopIconButton(icon: Icons.settings, onTap: _abrirAjustes),
+                  ],
+                ),
+              ),
               LayoutBuilder(
                 builder: (context, constraints) {
                   return SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 86, 20, 26),
+                    padding: const EdgeInsets.fromLTRB(20, 78, 20, 26),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight - 112,
+                        minHeight: constraints.maxHeight - 104,
                       ),
                       child: Column(
                         children: [
@@ -182,7 +243,7 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 18),
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(
@@ -195,7 +256,7 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
                               border: Border.all(color: Colors.black, width: 4),
                             ),
                             child: const Text(
-                              '¿QUÉ UNIVERSO QUIERES COMO BASE?',
+                              'ESTE ORIGEN SERÁ LA BASE DEL PERSONAJE AFÍN',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.black,
@@ -204,45 +265,46 @@ class _UniverseSelectPageState extends State<UniverseSelectPage> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 28),
-                          ..._universos.map(
-                            (u) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _UniverseOptionTile(
-                                label: u,
-                                selected: _universoSeleccionado == u,
-                                onTap: () {
-                                  setState(() => _universoSeleccionado = u);
-                                },
+                          const SizedBox(height: 22),
+                          if (_cargando)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 32),
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
                               ),
+                            )
+                          else if (_hayError)
+                            _ComicButton(
+                              text: 'REINTENTAR',
+                              variant: _ButtonVariant.blanco,
+                              disabled: false,
+                              onTap: _cargarUniversos,
+                            )
+                          else ...[
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              alignment: WrapAlignment.center,
+                              children: _universos.map((u) {
+                                return _UniverseChip(
+                                  label: u,
+                                  selected: _universoSeleccionado == u,
+                                  onTap: () =>
+                                      setState(() => _universoSeleccionado = u),
+                                );
+                              }).toList(),
                             ),
-                          ),
-                          const SizedBox(height: 14),
-                          _ComicMainActionButton(
-                            text: 'CONTINUAR',
-                            onTap: _continuar,
-                          ),
+                            const SizedBox(height: 26),
+                            _ComicMainActionButton(
+                              text: 'CONTINUAR',
+                              onTap: _continuar,
+                            ),
+                          ],
                         ],
                       ),
                     ),
                   );
                 },
-              ),
-              Positioned(
-                top: 18,
-                left: 18,
-                child: _TopIconButton(
-                  icon: Icons.arrow_back,
-                  onTap: widget.onBack,
-                ),
-              ),
-              Positioned(
-                top: 18,
-                right: 18,
-                child: _TopIconButton(
-                  icon: Icons.settings,
-                  onTap: _abrirAjustes,
-                ),
               ),
             ],
           ),
@@ -279,31 +341,16 @@ class _TopIconButton extends StatelessWidget {
   }
 }
 
-class _UniverseOptionTile extends StatelessWidget {
+class _UniverseChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _UniverseOptionTile({
+  const _UniverseChip({
     required this.label,
     required this.selected,
     required this.onTap,
   });
-
-  IconData get _icon {
-    switch (label) {
-      case 'Dragon Ball':
-        return Icons.radar;
-      case 'DC Comics':
-        return Icons.bathtub;
-      case 'Greek Mythology':
-        return Icons.flash_on;
-      case 'LOTR':
-        return Icons.auto_fix_high;
-      default:
-        return Icons.public;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -311,8 +358,9 @@ class _UniverseOptionTile extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        width: 150,
+        constraints: const BoxConstraints(minHeight: 68),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFFFD60A) : const Color(0xFFFFFDF2),
           borderRadius: BorderRadius.circular(18),
@@ -321,33 +369,17 @@ class _UniverseOptionTile extends StatelessWidget {
             BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
           ],
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD60A),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.black, width: 3),
-              ),
-              child: Icon(_icon, color: Colors.black, size: 28),
+        child: Center(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
             ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            if (selected)
-              const Icon(Icons.check_circle, color: Colors.black, size: 28),
-          ],
+          ),
         ),
       ),
     );

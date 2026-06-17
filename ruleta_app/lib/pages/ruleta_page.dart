@@ -5,6 +5,7 @@ part of comic_ruleta_app;
 class RuletaPage extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onBackToModes;
+  final VoidCallback? onOpenProfile;
 
   // modoJuego:
   // - 'afin': si universoFijo viene definido, se salta la ruleta de origen.
@@ -16,6 +17,7 @@ class RuletaPage extends StatefulWidget {
     super.key,
     required this.onLogout,
     required this.onBackToModes,
+    this.onOpenProfile,
     this.modoJuego = 'afin',
     this.universoFijo,
   });
@@ -365,6 +367,20 @@ class _RuletaPageState extends State<RuletaPage>
               },
           onLogout: widget.onLogout,
         ),
+      ),
+    );
+  }
+
+  void _abrirPerfil() {
+    if (widget.onOpenProfile != null) {
+      widget.onOpenProfile!();
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => ProfilePage(onLogout: widget.onLogout),
       ),
     );
   }
@@ -890,31 +906,63 @@ class _RuletaPageState extends State<RuletaPage>
                                 ),
                               ),
                             ),
-                            GestureDetector(
-                              onTap: _abrirPersonalizacion,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border: Border.all(
-                                    color: Colors.black,
-                                    width: 3,
-                                  ),
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black,
-                                      blurRadius: 0,
-                                      offset: Offset(3, 3),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: _abrirPerfil,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      border: Border.all(
+                                        color: Colors.black,
+                                        width: 3,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Colors.black,
+                                          blurRadius: 0,
+                                          offset: Offset(3, 3),
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                    child: const Icon(
+                                      Icons.person,
+                                      color: Colors.black,
+                                      size: 24,
+                                    ),
+                                  ),
                                 ),
-                                child: const Icon(
-                                  Icons.settings,
-                                  color: Colors.black,
-                                  size: 24,
+                                const SizedBox(width: 10),
+                                GestureDetector(
+                                  onTap: _abrirPersonalizacion,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      border: Border.all(
+                                        color: Colors.black,
+                                        width: 3,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Colors.black,
+                                          blurRadius: 0,
+                                          offset: Offset(3, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.settings,
+                                      color: Colors.black,
+                                      size: 24,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ],
                         ),

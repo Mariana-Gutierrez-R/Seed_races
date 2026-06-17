@@ -1,5 +1,6 @@
 library comic_ruleta_app;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -8,11 +9,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'dart:async';
+import 'firebase_options.dart';
 
 part 'models/models.dart';
 part 'services/auth_service.dart';
@@ -22,6 +21,8 @@ part 'pages/mode_select_page.dart';
 part 'pages/universe_select_page.dart';
 part 'pages/ruleta_page.dart';
 part 'pages/settings_page.dart';
+part 'pages/profile_page.dart';
+part 'pages/unlocks_page.dart';
 part 'widgets/comic_widgets.dart';
 part 'painters/comic_painters.dart';
 part 'theme/app_colors.dart';
