@@ -4,6 +4,7 @@ part of comic_ruleta_app;
 
 class ApiService {
   static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String authBaseUrl = 'http://10.0.2.2:8001';
 
   static Future<Map<String, dynamic>> _get(
     String path, [
@@ -36,6 +37,44 @@ class ApiService {
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('HTTP ${res.statusCode}: ${res.body}');
+    }
+
+    if (res.body.isEmpty) return {};
+    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+
+  static Future<Map<String, dynamic>> _getAuth(
+    String path, [
+    Map<String, String>? params,
+  ]) async {
+    final uri = params == null
+        ? Uri.parse('$authBaseUrl$path')
+        : Uri.parse('$authBaseUrl$path').replace(queryParameters: params);
+
+    final res = await http.get(uri).timeout(const Duration(seconds: 8));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('AUTH HTTP ${res.statusCode}: ${res.body}');
+    }
+
+    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> _postAuth(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$authBaseUrl$path'),
+          headers: {'Content-Type': 'application/json'},
+          body: body == null ? null : jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 8));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('AUTH HTTP ${res.statusCode}: ${res.body}');
     }
 
     if (res.body.isEmpty) return {};
@@ -218,5 +257,23 @@ class ApiService {
   static Future<void> reiniciarJuego() async {
     final idUsuario = await AuthService.getIdUsuario();
     await _post('/reiniciar-juego', body: {'id_usuario': idUsuario});
+  }
+
+
+  static Future<Map<String, dynamic>> getPerfilUsuario(int idUsuario) async {
+    return _getAuth('/perfil/$idUsuario');
+  }
+
+  static Future<Map<String, dynamic>> actualizarAvatarPerfil({
+    required int idUsuario,
+    required String avatarKey,
+  }) async {
+    return _postAuth(
+      '/perfil/avatar',
+      body: {
+        'id_usuario': idUsuario,
+        'avatar_key': avatarKey,
+      },
+    );
   }
 }
