@@ -371,20 +371,6 @@ class _RuletaPageState extends State<RuletaPage>
     );
   }
 
-  void _abrirPerfil() {
-    if (widget.onOpenProfile != null) {
-      widget.onOpenProfile!();
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => ProfilePage(onLogout: widget.onLogout),
-      ),
-    );
-  }
-
   Future<void> _mostrarBannerClasico() async {
     setState(() => _bannerClasico = true);
     await Future<void>.delayed(const Duration(milliseconds: 900));
@@ -878,7 +864,6 @@ class _RuletaPageState extends State<RuletaPage>
                     child: Column(
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             GestureDetector(
                               onTap: widget.onBackToModes,
@@ -906,63 +891,61 @@ class _RuletaPageState extends State<RuletaPage>
                                 ),
                               ),
                             ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                GestureDetector(
-                                  onTap: _abrirPerfil,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      border: Border.all(
-                                        color: Colors.black,
-                                        width: 3,
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Colors.black,
-                                          blurRadius: 0,
-                                          offset: Offset(3, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.person,
+                            const Spacer(),
+                            if (widget.onOpenProfile != null) ...[
+                              GestureDetector(
+                                onTap: widget.onOpenProfile,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    border: Border.all(
                                       color: Colors.black,
-                                      size: 24,
+                                      width: 3,
                                     ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black,
+                                        blurRadius: 0,
+                                        offset: Offset(3, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.person,
+                                    color: Colors.black,
+                                    size: 24,
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                GestureDetector(
-                                  onTap: _abrirPersonalizacion,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      border: Border.all(
-                                        color: Colors.black,
-                                        width: 3,
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Colors.black,
-                                          blurRadius: 0,
-                                          offset: Offset(3, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.settings,
-                                      color: Colors.black,
-                                      size: 24,
-                                    ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            GestureDetector(
+                              onTap: _abrirPersonalizacion,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 3,
                                   ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black,
+                                      blurRadius: 0,
+                                      offset: Offset(3, 3),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                                child: const Icon(
+                                  Icons.settings,
+                                  color: Colors.black,
+                                  size: 24,
+                                ),
+                              ),
                             ),
                           ],
                         ),

@@ -1,8 +1,7 @@
 part of comic_ruleta_app;
 
-// ================== PROFILE PAGE ==================
-// Commit 1: pantalla visual de perfil.
-// No conecta todavía EXP, monedas ni desbloqueos con backend.
+// ================== PROFILE PAGE - STEP 2 ==================
+// Perfil visual y navegable. No conecta todavía backend, EXP real ni monedas reales.
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -20,9 +19,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Set<Color> _coloresRandomActivos = {};
 
   String _apodo = 'Peep Player';
-  String _avatarAsset = 'assets/images/avatars/maga.png';
-
-  final TextEditingController _apodoCtrl = TextEditingController();
 
   final List<Color> _fondos = const [
     Color(0xFF00B7FF),
@@ -38,12 +34,7 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _coloresRandomActivos = _fondos.toSet();
     _cargarPreferencias();
-  }
-
-  @override
-  void dispose() {
-    _apodoCtrl.dispose();
-    super.dispose();
+    _cargarPerfilTemporal();
   }
 
   int _colorToInt(Color c) => c.value;
@@ -54,8 +45,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final aleatorio = prefs.getBool('ajustes_colores_aleatorios');
     final fijo = prefs.getInt('ajustes_color_fijo');
     final random = prefs.getStringList('ajustes_colores_random');
-    final apodo = prefs.getString('perfil_apodo');
-    final avatar = prefs.getString('perfil_avatar_asset');
 
     if (!mounted) return;
 
@@ -79,44 +68,45 @@ class _ProfilePageState extends State<ProfilePage> {
       if (_coloresRandomActivos.isEmpty) {
         _coloresRandomActivos = _fondos.toSet();
       }
-
-      if (_coloresAleatorios && _coloresRandomActivos.isNotEmpty) {
-        _fondoActual = _coloresRandomActivos.elementAt(
-          Random().nextInt(_coloresRandomActivos.length),
-        );
-      }
-
-      _apodo = apodo?.trim().isNotEmpty == true ? apodo!.trim() : 'Peep Player';
-      _avatarAsset = avatar?.trim().isNotEmpty == true
-          ? avatar!.trim()
-          : 'assets/images/avatars/maga.png';
     });
   }
 
-  Future<void> _guardarApodo(String nuevoApodo) async {
-    final limpio = nuevoApodo.trim();
+  Future<void> _cargarPerfilTemporal() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
+    setState(() {
+      _apodo = prefs.getString('perfil_apodo') ?? 'Peep Player';
+    });
+  }
+
+  Future<void> _guardarApodo(String apodo) async {
+    final limpio = apodo.trim();
+
     if (limpio.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('perfil_apodo', limpio);
 
     if (!mounted) return;
+
     setState(() => _apodo = limpio);
   }
 
   void _editarApodo() {
-    _apodoCtrl.text = _apodo;
+    final ctrl = TextEditingController(text: _apodo);
 
     showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return Dialog(
           backgroundColor: Colors.transparent,
           child: Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: const Color(0xFFFFFDF2),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(26),
               border: Border.all(color: Colors.black, width: 5),
               boxShadow: const [
                 BoxShadow(
@@ -129,32 +119,26 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'EDITAR APODO',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
+                const _ExplosiveTitle(
+                  text: 'EDITAR\nAPODO',
+                  subtitle: 'TU NOMBRE DE HÉROE',
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 TextField(
-                  controller: _apodoCtrl,
+                  controller: ctrl,
                   style: const TextStyle(
                     color: Colors.black,
                     fontWeight: FontWeight.w900,
                   ),
                   decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.badge, color: Colors.black),
                     labelText: 'Apodo',
                     labelStyle: const TextStyle(
                       color: Colors.black,
                       fontWeight: FontWeight.w900,
                     ),
-                    prefixIcon: const Icon(Icons.badge, color: Colors.black),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: const Color(0xFFFFFDF2),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
                       borderSide: const BorderSide(
@@ -171,13 +155,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                _ProfileComicButton(
+                const SizedBox(height: 16),
+                _ComicMainActionButton(
                   text: 'GUARDAR',
-                  icon: Icons.save,
                   onTap: () async {
-                    await _guardarApodo(_apodoCtrl.text);
-                    if (context.mounted) Navigator.pop(context);
+                    await _guardarApodo(ctrl.text);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
                   },
                 ),
               ],
@@ -188,22 +171,16 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  void _abrirDesbloqueosPendiente() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Desbloqueos se conectará en el siguiente commit.'),
-        duration: Duration(seconds: 2),
-      ),
+  void _abrirDesbloqueos() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const UnlocksPage()),
     );
   }
 
-  void _resetPendiente() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Reset de cuenta se conectará en una fase posterior.'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+  void _cerrarSesionDesdePerfil() {
+    Navigator.pop(context);
+    widget.onLogout();
   }
 
   @override
@@ -219,53 +196,32 @@ class _ProfilePageState extends State<ProfilePage> {
               const Positioned.fill(
                 child: _ComicDotsBackground(modoClasico: false),
               ),
-              const Positioned.fill(child: _ComicSpeedLines()),
               SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        _ProfileTopButton(
+                        _ProfileStepIconButton(
                           icon: Icons.arrow_back,
                           onTap: () => Navigator.pop(context),
                         ),
-                        const Spacer(),
-                        _ProfileTopButton(
-                          icon: Icons.logout,
-                          onTap: () {
-                            Navigator.pop(context);
-                            widget.onLogout();
-                          },
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: _ExplosiveTitle(
+                            text: 'MI\nPERFIL',
+                            subtitle: 'PROGRESO DEL JUGADOR',
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'MI\nPERFIL',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w900,
-                        height: 0.88,
-                        letterSpacing: 1,
-                        shadows: [
-                          Shadow(offset: Offset(4, 0), color: Colors.black),
-                          Shadow(offset: Offset(-4, 0), color: Colors.black),
-                          Shadow(offset: Offset(0, 4), color: Colors.black),
-                          Shadow(offset: Offset(4, 4), color: Colors.black),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _ProfileComicCard(
+                    const SizedBox(height: 22),
+                    _ProfileStepCard(
                       child: Column(
                         children: [
                           Container(
-                            width: 132,
-                            height: 132,
-                            padding: const EdgeInsets.all(8),
+                            width: 118,
+                            height: 118,
                             decoration: BoxDecoration(
                               color: Colors.white,
                               shape: BoxShape.circle,
@@ -278,19 +234,13 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ],
                             ),
-                            child: ClipOval(
-                              child: Image.asset(
-                                _avatarAsset,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.person,
-                                  color: Colors.black,
-                                  size: 78,
-                                ),
-                              ),
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.black,
+                              size: 68,
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Text(
                             _apodo,
                             textAlign: TextAlign.center,
@@ -298,73 +248,88 @@ class _ProfilePageState extends State<ProfilePage> {
                               color: Colors.black,
                               fontSize: 28,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 1,
+                              letterSpacing: 0.8,
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          _ProfileComicButton(
+                          const SizedBox(height: 14),
+                          _ComicMainActionButton(
                             text: 'EDITAR APODO',
-                            icon: Icons.edit,
                             onTap: _editarApodo,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    _ProfileComicCard(
+                    const SizedBox(height: 18),
+                    _ProfileStepCard(
                       child: Column(
                         children: [
                           Row(
                             children: const [
                               Expanded(
-                                child: _ProfileStatBox(
+                                child: _ProfileStepStatBox(
                                   label: 'NIVEL',
                                   value: '1',
                                 ),
                               ),
-                              SizedBox(width: 10),
+                              SizedBox(width: 12),
                               Expanded(
-                                child: _ProfileStatBox(
-                                  label: 'EXP',
-                                  value: '0 / 100',
+                                child: _ProfileStepStatBox(
+                                  label: 'PEEP COINS',
+                                  value: '0',
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          const _ProfileStatBox(
-                            label: 'PEEP COINS',
-                            value: '0',
+                          const SizedBox(height: 16),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'EXP 0 / 100',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: const LinearProgressIndicator(
+                              value: 0,
+                              minHeight: 22,
+                              backgroundColor: Colors.white,
+                              color: Color(0xFF34C759),
+                            ),
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'Esta pantalla ya queda creada y lista para conectar EXP, avatares y monedas en los siguientes commits.',
+                            'Esta pantalla queda lista para conectar EXP, avatares y monedas en los siguientes commits.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.black87,
+                              fontWeight: FontWeight.w700,
                               fontSize: 12,
-                              fontWeight: FontWeight.w800,
                               height: 1.25,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    _ProfileComicCard(
+                    const SizedBox(height: 18),
+                    _ProfileStepCard(
                       child: Column(
                         children: [
-                          _ProfileComicButton(
-                            text: 'DESBLOQUEOS',
-                            icon: Icons.lock_open,
-                            onTap: _abrirDesbloqueosPendiente,
+                          _ComicMainActionButton(
+                            text: 'VER DESBLOQUEOS',
+                            onTap: _abrirDesbloqueos,
                           ),
-                          const SizedBox(height: 10),
-                          _ProfileComicButton(
-                            text: 'RESET CUENTA',
-                            icon: Icons.warning,
-                            dark: true,
-                            onTap: _resetPendiente,
+                          const SizedBox(height: 12),
+                          _ComicButton(
+                            text: 'CERRAR SESIÓN',
+                            variant: _ButtonVariant.blanco,
+                            disabled: false,
+                            onTap: _cerrarSesionDesdePerfil,
                           ),
                         ],
                       ),
@@ -380,11 +345,11 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class _ProfileTopButton extends StatelessWidget {
+class _ProfileStepIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _ProfileTopButton({required this.icon, required this.onTap});
+  const _ProfileStepIconButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -395,22 +360,22 @@ class _ProfileTopButton extends StatelessWidget {
         padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
           color: Colors.white,
-          border: Border.all(color: Colors.black, width: 3),
-          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.black, width: 4),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: const [
-            BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
+            BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
           ],
         ),
-        child: Icon(icon, color: Colors.black, size: 24),
+        child: Icon(icon, color: Colors.black, size: 26),
       ),
     );
   }
 }
 
-class _ProfileComicCard extends StatelessWidget {
+class _ProfileStepCard extends StatelessWidget {
   final Widget child;
 
-  const _ProfileComicCard({required this.child});
+  const _ProfileStepCard({required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -430,74 +395,23 @@ class _ProfileComicCard extends StatelessWidget {
   }
 }
 
-class _ProfileComicButton extends StatelessWidget {
-  final String text;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool dark;
-
-  const _ProfileComicButton({
-    required this.text,
-    required this.icon,
-    required this.onTap,
-    this.dark = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-        decoration: BoxDecoration(
-          color: dark ? Colors.black : const Color(0xFFFFD60A),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.black, width: 4),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: dark ? Colors.white : Colors.black, size: 22),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                text,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: dark ? Colors.white : Colors.black,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileStatBox extends StatelessWidget {
+class _ProfileStepStatBox extends StatelessWidget {
   final String label;
   final String value;
 
-  const _ProfileStatBox({required this.label, required this.value});
+  const _ProfileStepStatBox({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFFD60A),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.black, width: 4),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
+        ],
       ),
       child: Column(
         children: [
@@ -506,19 +420,19 @@ class _ProfileStatBox extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Colors.black,
-              fontSize: 11,
               fontWeight: FontWeight.w900,
+              fontSize: 11,
               letterSpacing: 1,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           Text(
             value,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Colors.black,
-              fontSize: 22,
               fontWeight: FontWeight.w900,
+              fontSize: 24,
             ),
           ),
         ],

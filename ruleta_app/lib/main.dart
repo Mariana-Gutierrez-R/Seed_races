@@ -1,6 +1,5 @@
 library comic_ruleta_app;
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -9,9 +8,11 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'firebase_options.dart';
+import 'dart:async';
 
 part 'models/models.dart';
 part 'services/auth_service.dart';
@@ -49,6 +50,8 @@ class _ComicRuletaAppState extends State<ComicRuletaApp> {
   String _pantallaActual = 'login';
   String _modoJuego = 'afin';
   String? _universoSeleccionado;
+
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -111,6 +114,14 @@ class _ComicRuletaAppState extends State<ComicRuletaApp> {
     });
   }
 
+  void _abrirPerfil() {
+    _navigatorKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfilePage(onLogout: _cerrarSesion),
+      ),
+    );
+  }
+
   Future<void> _cerrarSesion() async {
     await AuthService.logout();
 
@@ -137,6 +148,7 @@ class _ComicRuletaAppState extends State<ComicRuletaApp> {
         key: const ValueKey('pantalla_universos'),
         onBack: _volverAModos,
         onLogout: _cerrarSesion,
+        onOpenProfile: _abrirPerfil,
         onUniversoSeleccionado: _seleccionarUniversoAfin,
       );
     } else if (_pantallaActual == 'ruleta') {
@@ -147,6 +159,7 @@ class _ComicRuletaAppState extends State<ComicRuletaApp> {
         key: ValueKey(keyRuleta),
         onLogout: _cerrarSesion,
         onBackToModes: _volverAModos,
+        onOpenProfile: _abrirPerfil,
         modoJuego: _modoJuego,
         universoFijo: _universoSeleccionado,
       );
@@ -156,10 +169,12 @@ class _ComicRuletaAppState extends State<ComicRuletaApp> {
         onModoAfin: _seleccionarModoAfin,
         onModoCaotico: _seleccionarModoCaotico,
         onLogout: _cerrarSesion,
+        onOpenProfile: _abrirPerfil,
       );
     }
 
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(brightness: Brightness.dark, useMaterial3: false),
       home: home,

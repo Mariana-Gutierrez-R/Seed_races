@@ -116,19 +116,6 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
     );
   }
 
-  void _abrirPerfil() {
-    if (widget.onOpenProfile != null) {
-      widget.onOpenProfile!();
-      return;
-    }
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ProfilePage(onLogout: widget.onLogout),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final bg = _coloresAleatorios ? _fondoActual : _colorFijo;
@@ -136,8 +123,6 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
     return Scaffold(
       body: SizedBox.expand(
         child: Container(
-          width: double.infinity,
-          height: double.infinity,
           color: bg,
           child: SafeArea(
             child: Stack(
@@ -145,51 +130,65 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
                 const Positioned.fill(
                   child: _ComicDotsBackground(modoClasico: false),
                 ),
-                SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(18, 78, 18, 28),
-                  child: Column(
-                    children: [
-                      const _ModeHeader(),
-                      const SizedBox(height: 28),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _ModeCard(
-                              title: 'UNIVERSO\nAFÍN',
-                              subtitle:
-                                  'Elige un universo y encuentra el personaje base más parecido.',
-                              imagePath:
-                                  'assets/images/modo_personaje_afin.jpeg',
-                              onTap: widget.onModoAfin,
+
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(18, 34, 18, 24),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight - 58,
+                        ),
+                        child: Column(
+                          children: [
+                            const _ModeHeader(),
+                            const SizedBox(height: 24),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: _ModeCard(
+                                    title: 'UNIVERSO\nAFÍN',
+                                    subtitle:
+                                        'Elige un universo y encuentra el personaje base más parecido.',
+                                    imagePath:
+                                        'assets/images/modo_personaje_afin.jpeg',
+                                    onTap: widget.onModoAfin,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: _ModeCard(
+                                    title: 'MODO\nCAÓTICO',
+                                    subtitle:
+                                        'Todo se genera de forma aleatoria. Solo caos creativo.',
+                                    imagePath:
+                                        'assets/images/modo_caotico.jpeg',
+                                    onTap: widget.onModoCaotico,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: _ModeCard(
-                              title: 'MODO\nCAÓTICO',
-                              subtitle:
-                                  'Todo se genera de forma aleatoria. Solo caos creativo.',
-                              imagePath: 'assets/images/modo_caotico.jpeg',
-                              onTap: widget.onModoCaotico,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
+
                 Positioned(
-                  top: 16,
-                  right: 18,
+                  top: 6,
+                  right: 14,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _ModeTopIconButton(
-                        icon: Icons.person,
-                        onTap: _abrirPerfil,
-                      ),
-                      const SizedBox(width: 12),
+                      if (widget.onOpenProfile != null) ...[
+                        _ModeTopIconButton(
+                          icon: Icons.person,
+                          onTap: widget.onOpenProfile!,
+                        ),
+                        const SizedBox(width: 10),
+                      ],
                       _ModeTopIconButton(
                         icon: Icons.settings,
                         onTap: _abrirAjustes,
@@ -218,7 +217,7 @@ class _ModeTopIconButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(color: Colors.black, width: 4),
@@ -227,7 +226,7 @@ class _ModeTopIconButton extends StatelessWidget {
             BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
           ],
         ),
-        child: Icon(icon, color: Colors.black, size: 26),
+        child: Icon(icon, color: Colors.black, size: 24),
       ),
     );
   }
@@ -240,6 +239,7 @@ class _ModeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        const SizedBox(height: 12),
         const Text(
           'ELIGE TU\nMODO',
           textAlign: TextAlign.center,
@@ -297,9 +297,6 @@ class _ModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final imageHeight = w >= 720 ? 230.0 : 150.0;
-
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
       decoration: BoxDecoration(
@@ -312,20 +309,14 @@ class _ModeCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            height: imageHeight,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFFDF2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              imagePath,
+              height: 145,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.high,
             ),
           ),
           const SizedBox(height: 12),
@@ -422,176 +413,168 @@ class _ModeColorSettingsPageState extends State<_ModeColorSettingsPage> {
     final bg = _coloresAleatorios ? widget.fondoActual : _colorFijo;
 
     return Scaffold(
-      body: SizedBox.expand(
-        child: Container(
-          width: double.infinity,
-          height: double.infinity,
-          color: bg,
-          child: SafeArea(
-            child: Stack(
-              children: [
-                const Positioned.fill(
-                  child: _ComicDotsBackground(modoClasico: false),
-                ),
-                SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              padding: const EdgeInsets.all(9),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
+      body: Container(
+        color: bg,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              const Positioned.fill(
+                child: _ComicDotsBackground(modoClasico: false),
+              ),
+              SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            padding: const EdgeInsets.all(9),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(color: Colors.black, width: 3),
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: const [
+                                BoxShadow(
                                   color: Colors.black,
-                                  width: 3,
+                                  blurRadius: 0,
+                                  offset: Offset(3, 3),
                                 ),
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black,
-                                    blurRadius: 0,
-                                    offset: Offset(3, 3),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.arrow_back,
-                                color: Colors.black,
-                              ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back,
+                              color: Colors.black,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'AJUSTES',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 34,
-                                fontWeight: FontWeight.w900,
-                                shadows: [
-                                  Shadow(
-                                    offset: Offset(4, 4),
-                                    color: Colors.black,
-                                  ),
-                                ],
-                              ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'AJUSTES',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              shadows: [
+                                Shadow(
+                                  offset: Offset(4, 4),
+                                  color: Colors.black,
+                                ),
+                              ],
                             ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    _SettingsCard(
+                      title: 'COLOR DE FONDO',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _ComicToggleRow(
+                            title: 'Color aleatorio',
+                            subtitle: 'La app cambia de color cuando giras',
+                            value: _coloresAleatorios,
+                            onChanged: (v) {
+                              setState(() => _coloresAleatorios = v);
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'COLOR FIJO',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: widget.fondos.map((c) {
+                              final selected = _colorFijo == c;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _colorFijo = c;
+                                    _coloresAleatorios = false;
+                                  });
+                                },
+                                child: _ColorBubble(
+                                  color: c,
+                                  selected: selected,
+                                ),
+                              );
+                            }).toList(),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      _SettingsCard(
-                        title: 'COLOR DE FONDO',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _ComicToggleRow(
-                              title: 'Color aleatorio',
-                              subtitle: 'La app cambia de color cuando giras',
-                              value: _coloresAleatorios,
-                              onChanged: (v) {
-                                setState(() => _coloresAleatorios = v);
-                              },
+                    ),
+                    const SizedBox(height: 18),
+                    _SettingsCard(
+                      title: 'COLORES RANDOM',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Elige qué colores pueden salir cuando el modo aleatorio esté activo.',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
                             ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'COLOR FIJO',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 14,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: widget.fondos.map((c) {
-                                final selected = _colorFijo == c;
-                                return GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _colorFijo = c;
-                                      _coloresAleatorios = false;
-                                    });
-                                  },
-                                  child: _ColorBubble(
-                                    color: c,
-                                    selected: selected,
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: widget.fondos.map((c) {
+                              final selected = _coloresRandom.contains(c);
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    if (selected && _coloresRandom.length > 1) {
+                                      _coloresRandom.remove(c);
+                                    } else {
+                                      _coloresRandom.add(c);
+                                    }
+                                  });
+                                },
+                                child: _ColorBubble(
+                                  color: c,
+                                  selected: selected,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 18),
-                      _SettingsCard(
-                        title: 'COLORES RANDOM',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Elige qué colores pueden salir cuando el modo aleatorio esté activo.',
-                              style: TextStyle(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: widget.fondos.map((c) {
-                                final selected = _coloresRandom.contains(c);
-                                return GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      if (selected &&
-                                          _coloresRandom.length > 1) {
-                                        _coloresRandom.remove(c);
-                                      } else {
-                                        _coloresRandom.add(c);
-                                      }
-                                    });
-                                  },
-                                  child: _ColorBubble(
-                                    color: c,
-                                    selected: selected,
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      _ComicMainActionButton(
-                        text: 'GUARDAR AJUSTES',
-                        onTap: _guardar,
-                      ),
-                      const SizedBox(height: 14),
-                      _ComicButton(
-                        text: 'CERRAR SESIÓN',
-                        variant: _ButtonVariant.negro,
-                        disabled: false,
-                        onTap: () {
-                          Navigator.pop(context);
-                          widget.onLogout();
-                        },
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 20),
+                    _ComicMainActionButton(
+                      text: 'GUARDAR AJUSTES',
+                      onTap: _guardar,
+                    ),
+                    const SizedBox(height: 14),
+                    _ComicButton(
+                      text: 'CERRAR SESIÓN',
+                      variant: _ButtonVariant.negro,
+                      disabled: false,
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onLogout();
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
