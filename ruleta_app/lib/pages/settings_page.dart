@@ -138,8 +138,9 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
         child: SafeArea(
           child: Stack(
             children: [
-              const Positioned.fill(child: _ComicSpeedLines()),
-              const Positioned.fill(child: _AuthComicDots()),
+              const Positioned.fill(
+                child: _ComicDotsBackground(modoClasico: false),
+              ),
               SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
                 child: Column(

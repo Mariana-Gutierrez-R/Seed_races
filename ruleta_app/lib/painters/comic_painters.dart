@@ -255,9 +255,11 @@ class _WheelComicPainter extends CustomPainter {
       const Color(0xFFFFB6C1),
     ];
 
+    final segmentColors = _buildSegmentColors(visualSegments, colors);
+
     for (int i = 0; i < visualSegments; i++) {
       final start = -pi / 2 + i * slice;
-      Color col = colors[i % colors.length];
+      Color col = segmentColors[i];
 
       if (modoClasico) {
         final g = ((col.red * 0.3) + (col.green * 0.59) + (col.blue * 0.11))
@@ -345,6 +347,37 @@ class _WheelComicPainter extends CustomPainter {
       canvas,
       Offset(c.dx - starPainter.width / 2, c.dy - starPainter.height / 2),
     );
+  }
+
+  List<Color> _buildSegmentColors(int count, List<Color> palette) {
+    if (count <= 0) return const [];
+    if (palette.isEmpty) return List<Color>.filled(count, Colors.white);
+
+    final result = <Color>[];
+
+    for (int i = 0; i < count; i++) {
+      var colorIndex = i % palette.length;
+      var color = palette[colorIndex];
+
+      if (result.isNotEmpty && color == result.last) {
+        colorIndex = (colorIndex + 1) % palette.length;
+        color = palette[colorIndex];
+      }
+
+      result.add(color);
+    }
+
+    if (result.length > 2 && result.first == result.last) {
+      for (final candidate in palette) {
+        if (candidate != result.first &&
+            candidate != result[result.length - 2]) {
+          result[result.length - 1] = candidate;
+          break;
+        }
+      }
+    }
+
+    return result;
   }
 
   String _shortLabel(String text) {
