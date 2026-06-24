@@ -39,6 +39,9 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
   late Color _colorFijo;
   late Set<Color> _coloresRandom;
   late String _picoSeleccionado;
+  int _nivelActual = 1;
+  int _expTotal = 0;
+  bool _cargandoPerfil = false;
 
   @override
   void initState() {
@@ -49,6 +52,68 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
         ? widget.fondos.toSet()
         : widget.coloresRandomActivos.toSet();
     _picoSeleccionado = widget.picoSeleccionado;
+    _cargarNivelPerfil();
+  }
+
+  int _calcularNivelDesdeExp(int expTotal) {
+    if (expTotal <= 0) return 1;
+    return (expTotal ~/ 100) + 1;
+  }
+
+  int _nivelRequeridoPico(String value) {
+    switch (value) {
+      case 'clasico':
+        return 1;
+      case 'radar':
+      case 'esfera':
+        return 5;
+      case 'murcielago':
+        return 10;
+      case 'rayo':
+        return 15;
+      case 'espada':
+      case 'anillo':
+        return 20;
+      default:
+        return 1;
+    }
+  }
+
+  bool _picoDesbloqueado(String value) {
+    return _nivelActual >= _nivelRequeridoPico(value);
+  }
+
+  Future<void> _cargarNivelPerfil() async {
+    if (!mounted) return;
+
+    setState(() => _cargandoPerfil = true);
+
+    try {
+      final idUsuario = await AuthService.getIdUsuario();
+
+      if (idUsuario == null) {
+        throw Exception('No hay usuario en sesión.');
+      }
+
+      final perfil = await ApiService.getPerfilUsuario(idUsuario);
+      final expTotal = int.tryParse('${perfil['exp_total'] ?? 0}') ?? 0;
+      final nivel = _calcularNivelDesdeExp(expTotal);
+
+      if (!mounted) return;
+
+      setState(() {
+        _expTotal = expTotal;
+        _nivelActual = nivel;
+        _cargandoPerfil = false;
+
+        if (!_picoDesbloqueado(_picoSeleccionado)) {
+          _picoSeleccionado = 'clasico';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cargandoPerfil = false);
+    }
   }
 
   void _guardar() {
@@ -209,9 +274,11 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Elige la forma del marcador que apunta al resultado de la ruleta.',
-                            style: TextStyle(
+                          Text(
+                            _cargandoPerfil
+                                ? 'Cargando nivel del jugador para validar desbloqueos...'
+                                : 'Elige la forma del marcador. Tu nivel actual es $_nivelActual · EXP $_expTotal.',
+                            style: const TextStyle(
                               color: Colors.black87,
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
@@ -222,6 +289,8 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                             value: 'clasico',
                             label: 'Pico clásico',
                             selected: _picoSeleccionado == 'clasico',
+                            unlocked: _picoDesbloqueado('clasico'),
+                            requiredLevel: _nivelRequeridoPico('clasico'),
                             onTap: () =>
                                 setState(() => _picoSeleccionado = 'clasico'),
                           ),
@@ -232,6 +301,8 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                             selected:
                                 _picoSeleccionado == 'radar' ||
                                 _picoSeleccionado == 'esfera',
+                            unlocked: _picoDesbloqueado('radar'),
+                            requiredLevel: _nivelRequeridoPico('radar'),
                             onTap: () =>
                                 setState(() => _picoSeleccionado = 'radar'),
                           ),
@@ -240,6 +311,8 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                             value: 'murcielago',
                             label: 'Murciélago',
                             selected: _picoSeleccionado == 'murcielago',
+                            unlocked: _picoDesbloqueado('murcielago'),
+                            requiredLevel: _nivelRequeridoPico('murcielago'),
                             onTap: () => setState(
                               () => _picoSeleccionado = 'murcielago',
                             ),
@@ -249,6 +322,8 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                             value: 'rayo',
                             label: 'Rayo',
                             selected: _picoSeleccionado == 'rayo',
+                            unlocked: _picoDesbloqueado('rayo'),
+                            requiredLevel: _nivelRequeridoPico('rayo'),
                             onTap: () =>
                                 setState(() => _picoSeleccionado = 'rayo'),
                           ),
@@ -259,6 +334,8 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                             selected:
                                 _picoSeleccionado == 'espada' ||
                                 _picoSeleccionado == 'anillo',
+                            unlocked: _picoDesbloqueado('espada'),
+                            requiredLevel: _nivelRequeridoPico('espada'),
                             onTap: () =>
                                 setState(() => _picoSeleccionado = 'espada'),
                           ),
@@ -295,55 +372,141 @@ class _PicoOptionTile extends StatelessWidget {
   final String value;
   final String label;
   final bool selected;
+  final bool unlocked;
+  final int requiredLevel;
   final VoidCallback onTap;
 
   const _PicoOptionTile({
     required this.value,
     required this.label,
     required this.selected,
+    required this.unlocked,
+    required this.requiredLevel,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final puedeSeleccionar = unlocked;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: puedeSeleccionar ? onTap : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFD60A) : Colors.white,
+          color: selected && unlocked
+              ? const Color(0xFFFFD60A)
+              : unlocked
+              ? Colors.white
+              : const Color(0xFFE6E6E6),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black, width: selected ? 5 : 4),
+          border: Border.all(
+            color: Colors.black,
+            width: selected && unlocked ? 5 : 4,
+          ),
           boxShadow: const [
             BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
           ],
         ),
         child: Row(
           children: [
-            Container(
-              width: 116,
-              height: 90,
+            Stack(
               alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFDF2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.black, width: 3),
-              ),
-              child: _PointerVisual(tipo: value, width: 106, height: 82),
+              children: [
+                Container(
+                  width: 116,
+                  height: 90,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFDF2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.black, width: 3),
+                  ),
+                  child: Opacity(
+                    opacity: unlocked ? 1 : 0.35,
+                    child: ColorFiltered(
+                      colorFilter: unlocked
+                          ? const ColorFilter.mode(
+                              Colors.transparent,
+                              BlendMode.dst,
+                            )
+                          : const ColorFilter.matrix(<double>[
+                              0.2126,
+                              0.7152,
+                              0.0722,
+                              0,
+                              0,
+                              0.2126,
+                              0.7152,
+                              0.0722,
+                              0,
+                              0,
+                              0.2126,
+                              0.7152,
+                              0.0722,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                            ]),
+                      child: _PointerVisual(
+                        tipo: value,
+                        width: 106,
+                        height: 82,
+                      ),
+                    ),
+                  ),
+                ),
+                if (!unlocked)
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black, width: 4),
+                    ),
+                    child: const Icon(
+                      Icons.lock,
+                      color: Colors.black,
+                      size: 24,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 15,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: unlocked ? Colors.black : Colors.black54,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (!unlocked) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Nivel $requiredLevel',
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (selected)
+            if (selected && unlocked)
               const Icon(Icons.check_circle, color: Colors.black, size: 24),
           ],
         ),
