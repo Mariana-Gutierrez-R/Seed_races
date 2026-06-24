@@ -1,8 +1,8 @@
 part of comic_ruleta_app;
 
-// ================== PROFILE PAGE - STEP 5 ==================
+// ================== PROFILE PAGE - STEP 6 ==================
 // Perfil visual + avatar real conectado con auth.py / MySQL.
-// Este paso agrega EXP real y cálculo de nivel desde exp_total.
+// Este paso muestra EXP, nivel y Peep Coins reales desde perfil_usuario.
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -120,12 +120,19 @@ class _ProfilePageState extends State<ProfilePage> {
 
       if (!mounted) return;
 
+      final expTotal = _safeInt(data['exp_total']);
+      final peepCoins = _safeInt(data['peep_coins']);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('perfil_exp_total', expTotal);
+      await prefs.setInt('perfil_peep_coins', peepCoins);
+
       setState(() {
         _apodo = (data['apodo'] ?? data['nombre_usuario'] ?? 'Peep Player')
             .toString();
         _avatarKey = (data['avatar_key'] ?? 'maga').toString();
-        _expTotal = _safeInt(data['exp_total']);
-        _peepCoins = _safeInt(data['peep_coins']);
+        _expTotal = expTotal;
+        _peepCoins = peepCoins;
         _cargandoPerfil = false;
       });
     } catch (e) {
@@ -508,7 +515,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'El nivel se calcula desde exp_total en MySQL. Cada 100 EXP suma un nivel.',
+                            'EXP y Peep Coins se leen desde MySQL. Cada 100 EXP suma un nivel.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.black87,
