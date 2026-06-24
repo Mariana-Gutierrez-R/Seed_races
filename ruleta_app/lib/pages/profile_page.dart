@@ -1,8 +1,8 @@
 part of comic_ruleta_app;
 
-// ================== PROFILE PAGE - STEP 4 ==================
+// ================== PROFILE PAGE - STEP 5 ==================
 // Perfil visual + avatar real conectado con auth.py / MySQL.
-// Este paso agrega bloqueo visual de avatares por nivel, sin tocar EXP real ni monedas.
+// Este paso agrega EXP real y cálculo de nivel desde exp_total.
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -14,7 +14,8 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  static const int _nivelActual = 1;
+  int _expTotal = 0;
+  int _peepCoins = 0;
 
   Color _fondoActual = const Color(0xFFFFD60A);
   bool _coloresAleatorios = false;
@@ -123,6 +124,8 @@ class _ProfilePageState extends State<ProfilePage> {
         _apodo = (data['apodo'] ?? data['nombre_usuario'] ?? 'Peep Player')
             .toString();
         _avatarKey = (data['avatar_key'] ?? 'maga').toString();
+        _expTotal = _safeInt(data['exp_total']);
+        _peepCoins = _safeInt(data['peep_coins']);
         _cargandoPerfil = false;
       });
     } catch (e) {
@@ -133,11 +136,36 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _apodo = prefs.getString('perfil_apodo') ?? 'Peep Player';
         _avatarKey = prefs.getString('perfil_avatar_key') ?? 'maga';
+        _expTotal = prefs.getInt('perfil_exp_total') ?? 0;
+        _peepCoins = prefs.getInt('perfil_peep_coins') ?? 0;
         _cargandoPerfil = false;
         _mensajePerfil =
             'No se pudo cargar el perfil desde MySQL. Revisa auth.py en puerto 8001.';
       });
     }
+  }
+
+  int _safeInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  int get _nivelActual {
+    final nivel = (_expTotal ~/ 100) + 1;
+    return nivel < 1 ? 1 : nivel;
+  }
+
+  int get _expActualNivel {
+    final exp = _expTotal % 100;
+    return exp < 0 ? 0 : exp;
+  }
+
+  int get _expSiguienteNivel => 100;
+
+  double get _progresoExp {
+    if (_expSiguienteNivel <= 0) return 0;
+    return (_expActualNivel / _expSiguienteNivel).clamp(0.0, 1.0);
   }
 
   Future<void> _guardarApodo(String apodo) async {
@@ -382,7 +410,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: [
                           const _ExplosiveTitle(
                             text: 'CAMBIAR\nAVATAR',
-                            subtitle: 'BLOQUEO VISUAL POR NIVEL',
+                            subtitle: 'BLOQUEO POR NIVEL REAL',
                           ),
                           const SizedBox(height: 14),
                           GridView.builder(
@@ -440,28 +468,28 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: Column(
                         children: [
                           Row(
-                            children: const [
+                            children: [
                               Expanded(
                                 child: _ProfileStepStatBox(
                                   label: 'NIVEL',
-                                  value: '1',
+                                  value: _nivelActual.toString(),
                                 ),
                               ),
-                              SizedBox(width: 12),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: _ProfileStepStatBox(
                                   label: 'PEEP COINS',
-                                  value: '0',
+                                  value: _peepCoins.toString(),
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 16),
-                          const Align(
+                          Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'EXP 0 / 100',
-                              style: TextStyle(
+                              'EXP $_expActualNivel / $_expSiguienteNivel  •  TOTAL $_expTotal',
+                              style: const TextStyle(
                                 color: Colors.black,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 14,
@@ -471,16 +499,16 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(height: 8),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(18),
-                            child: const LinearProgressIndicator(
-                              value: 0,
+                            child: LinearProgressIndicator(
+                              value: _progresoExp,
                               minHeight: 22,
                               backgroundColor: Colors.white,
-                              color: Color(0xFF34C759),
+                              color: const Color(0xFF34C759),
                             ),
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'Por ahora el nivel está fijo en 1. Maga y Payaso están disponibles; Sayajin y Dragón se desbloquearán cuando conectemos EXP real.',
+                            'El nivel se calcula desde exp_total en MySQL. Cada 100 EXP suma un nivel.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.black87,
