@@ -1,7 +1,8 @@
 part of comic_ruleta_app;
 
-// ================== PROFILE PAGE - STEP 3 ==================
+// ================== PROFILE PAGE - STEP 4 ==================
 // Perfil visual + avatar real conectado con auth.py / MySQL.
+// Este paso agrega bloqueo visual de avatares por nivel, sin tocar EXP real ni monedas.
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -13,6 +14,8 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  static const int _nivelActual = 1;
+
   Color _fondoActual = const Color(0xFFFFD60A);
   bool _coloresAleatorios = false;
   Color _colorFijo = const Color(0xFFFFD60A);
@@ -38,21 +41,25 @@ class _ProfilePageState extends State<ProfilePage> {
       keyName: 'maga',
       label: 'MAGA',
       assetPath: 'assets/images/avatars/maga.png',
+      requiredLevel: 0,
     ),
     _AvatarOption(
       keyName: 'payaso',
       label: 'PAYASO',
       assetPath: 'assets/images/avatars/payaso.png',
+      requiredLevel: 0,
     ),
     _AvatarOption(
       keyName: 'sayajin',
       label: 'SAYAJIN',
       assetPath: 'assets/images/avatars/sayajin.png',
+      requiredLevel: 5,
     ),
     _AvatarOption(
       keyName: 'dragon',
       label: 'DRAGÓN',
       assetPath: 'assets/images/avatars/dragon.png',
+      requiredLevel: 10,
     ),
   ];
 
@@ -70,7 +77,8 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _cargarPreferencias() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final coloresAleatorios = prefs.getBool('ajustes_colores_aleatorios') ?? false;
+    final coloresAleatorios =
+        prefs.getBool('ajustes_colores_aleatorios') ?? false;
     final colorFijoInt = prefs.getInt('ajustes_color_fijo');
     final fondoActualInt = prefs.getInt('ajustes_fondo_actual');
     final randomStrings = prefs.getStringList('ajustes_colores_random');
@@ -89,7 +97,9 @@ class _ProfilePageState extends State<ProfilePage> {
       _fondoActual = fondoActualInt == null
           ? _colorFijo
           : _intToColor(fondoActualInt);
-      _coloresRandomActivos = randomActivos.isEmpty ? _fondos.toSet() : randomActivos;
+      _coloresRandomActivos = randomActivos.isEmpty
+          ? _fondos.toSet()
+          : randomActivos;
     });
   }
 
@@ -110,7 +120,8 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
 
       setState(() {
-        _apodo = (data['apodo'] ?? data['nombre_usuario'] ?? 'Peep Player').toString();
+        _apodo = (data['apodo'] ?? data['nombre_usuario'] ?? 'Peep Player')
+            .toString();
         _avatarKey = (data['avatar_key'] ?? 'maga').toString();
         _cargandoPerfil = false;
       });
@@ -123,7 +134,8 @@ class _ProfilePageState extends State<ProfilePage> {
         _apodo = prefs.getString('perfil_apodo') ?? 'Peep Player';
         _avatarKey = prefs.getString('perfil_avatar_key') ?? 'maga';
         _cargandoPerfil = false;
-        _mensajePerfil = 'No se pudo cargar el perfil desde MySQL. Revisa auth.py en puerto 8001.';
+        _mensajePerfil =
+            'No se pudo cargar el perfil desde MySQL. Revisa auth.py en puerto 8001.';
       });
     }
   }
@@ -141,8 +153,20 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() => _apodo = limpio);
   }
 
-  Future<void> _guardarAvatar(String avatarKey) async {
+  bool _avatarDesbloqueado(_AvatarOption avatar) {
+    return _nivelActual >= avatar.requiredLevel;
+  }
+
+  Future<void> _guardarAvatar(_AvatarOption avatar) async {
     if (_guardandoAvatar) return;
+
+    if (!_avatarDesbloqueado(avatar)) {
+      setState(() {
+        _mensajePerfil =
+            'Este avatar se desbloquea en nivel ${avatar.requiredLevel}.';
+      });
+      return;
+    }
 
     setState(() {
       _guardandoAvatar = true;
@@ -157,16 +181,16 @@ class _ProfilePageState extends State<ProfilePage> {
 
       await ApiService.actualizarAvatarPerfil(
         idUsuario: idUsuario,
-        avatarKey: avatarKey,
+        avatarKey: avatar.keyName,
       );
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('perfil_avatar_key', avatarKey);
+      await prefs.setString('perfil_avatar_key', avatar.keyName);
 
       if (!mounted) return;
 
       setState(() {
-        _avatarKey = avatarKey;
+        _avatarKey = avatar.keyName;
         _guardandoAvatar = false;
         _mensajePerfil = 'Avatar actualizado correctamente.';
       });
@@ -175,7 +199,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
       setState(() {
         _guardandoAvatar = false;
-        _mensajePerfil = 'No se pudo guardar el avatar. Revisa auth.py y MySQL.';
+        _mensajePerfil =
+            'No se pudo guardar el avatar. Revisa auth.py y MySQL.';
       });
     }
   }
@@ -227,11 +252,17 @@ class _ProfilePageState extends State<ProfilePage> {
                     fillColor: const Color(0xFFFFFDF2),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
-                      borderSide: const BorderSide(color: Colors.black, width: 4),
+                      borderSide: const BorderSide(
+                        color: Colors.black,
+                        width: 4,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
-                      borderSide: const BorderSide(color: Colors.black, width: 5),
+                      borderSide: const BorderSide(
+                        color: Colors.black,
+                        width: 5,
+                      ),
                     ),
                   ),
                 ),
@@ -304,7 +335,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: _cargandoPerfil
                           ? const Padding(
                               padding: EdgeInsets.all(24),
-                              child: CircularProgressIndicator(color: Colors.black),
+                              child: CircularProgressIndicator(
+                                color: Colors.black,
+                              ),
                             )
                           : Column(
                               children: [
@@ -349,35 +382,41 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: [
                           const _ExplosiveTitle(
                             text: 'CAMBIAR\nAVATAR',
-                            subtitle: 'GUARDADO EN MYSQL',
+                            subtitle: 'BLOQUEO VISUAL POR NIVEL',
                           ),
                           const SizedBox(height: 14),
                           GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 0.82,
-                            ),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.82,
+                                ),
                             itemCount: _avatares.length,
                             itemBuilder: (context, index) {
                               final avatar = _avatares[index];
                               final selected = avatar.keyName == _avatarKey;
+                              final locked =
+                                  !_avatarDesbloqueado(avatar) && !selected;
 
                               return _AvatarChoiceCard(
                                 avatar: avatar,
                                 selected: selected,
-                                disabled: _guardandoAvatar,
-                                onTap: () => _guardarAvatar(avatar.keyName),
+                                locked: locked,
+                                saving: _guardandoAvatar,
+                                onTap: () => _guardarAvatar(avatar),
                               );
                             },
                           ),
                           if (_guardandoAvatar) ...[
                             const SizedBox(height: 14),
                             const Center(
-                              child: CircularProgressIndicator(color: Colors.black),
+                              child: CircularProgressIndicator(
+                                color: Colors.black,
+                              ),
                             ),
                           ],
                           if (_mensajePerfil != null) ...[
@@ -441,7 +480,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'En este commit solo conectamos el avatar con MySQL. EXP, monedas y niveles van en commits separados.',
+                            'Por ahora el nivel está fijo en 1. Maga y Payaso están disponibles; Sayajin y Dragón se desbloquearán cuando conectemos EXP real.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.black87,
@@ -486,11 +525,13 @@ class _AvatarOption {
   final String keyName;
   final String label;
   final String assetPath;
+  final int requiredLevel;
 
   const _AvatarOption({
     required this.keyName,
     required this.label,
     required this.assetPath,
+    required this.requiredLevel,
   });
 }
 
@@ -533,69 +574,121 @@ class _ProfileAvatarPreview extends StatelessWidget {
 class _AvatarChoiceCard extends StatelessWidget {
   final _AvatarOption avatar;
   final bool selected;
-  final bool disabled;
+  final bool locked;
+  final bool saving;
   final VoidCallback onTap;
 
   const _AvatarChoiceCard({
     required this.avatar,
     required this.selected,
-    required this.disabled,
+    required this.locked,
+    required this.saving,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final disabled = saving || locked;
+
     return GestureDetector(
       onTap: disabled ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFD60A) : Colors.white,
+          color: selected
+              ? const Color(0xFFFFD60A)
+              : locked
+              ? const Color(0xFFE6E6E6)
+              : Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: Colors.black, width: selected ? 5 : 4),
           boxShadow: const [
             BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
           ],
         ),
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.asset(
-                  avatar.assetPath,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) {
-                    return Container(
-                      color: const Color(0xFFFFFDF2),
-                      child: const Icon(Icons.person, color: Colors.black, size: 42),
-                    );
-                  },
+            Column(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: ColorFiltered(
+                      colorFilter: locked
+                          ? const ColorFilter.mode(
+                              Colors.grey,
+                              BlendMode.saturation,
+                            )
+                          : const ColorFilter.mode(
+                              Colors.transparent,
+                              BlendMode.multiply,
+                            ),
+                      child: Image.asset(
+                        avatar.assetPath,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) {
+                          return Container(
+                            color: const Color(0xFFFFFDF2),
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.black,
+                              size: 42,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  avatar.label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  selected
+                      ? 'EQUIPADO'
+                      : locked
+                      ? 'NIVEL ${avatar.requiredLevel}'
+                      : 'EQUIPAR',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            if (locked)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black, width: 3),
+                    shape: BoxShape.circle,
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        blurRadius: 0,
+                        offset: Offset(2, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.lock, color: Colors.black, size: 20),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              avatar.label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              selected ? 'EQUIPADO' : 'EQUIPAR',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.w900,
-                fontSize: 11,
-              ),
-            ),
           ],
         ),
       ),
