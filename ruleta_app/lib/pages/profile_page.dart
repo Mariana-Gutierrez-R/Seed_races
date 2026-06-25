@@ -124,6 +124,11 @@ class _ProfilePageState extends State<ProfilePage> {
       final peepCoins = _safeInt(data['peep_coins']);
 
       final prefs = await SharedPreferences.getInstance();
+      final expAnterior = prefs.getInt('perfil_exp_total') ?? 0;
+      final nivelAnterior = _nivelDesdeExp(expAnterior);
+      final nivelNuevo = _nivelDesdeExp(expTotal);
+      final mostrarSubidaNivel = nivelNuevo > nivelAnterior;
+
       await prefs.setInt('perfil_exp_total', expTotal);
       await prefs.setInt('perfil_peep_coins', peepCoins);
 
@@ -135,6 +140,18 @@ class _ProfilePageState extends State<ProfilePage> {
         _peepCoins = peepCoins;
         _cargandoPerfil = false;
       });
+
+      if (mostrarSubidaNivel && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _mostrarDialogoSubidaNivel(
+            nivelAnterior: nivelAnterior,
+            nivelNuevo: nivelNuevo,
+            expTotal: expTotal,
+            peepCoins: peepCoins,
+          );
+        });
+      }
     } catch (e) {
       final prefs = await SharedPreferences.getInstance();
 
@@ -152,16 +169,136 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  int _nivelDesdeExp(int expTotal) {
+    final nivel = (expTotal ~/ 100) + 1;
+    return nivel < 1 ? 1 : nivel;
+  }
+
+  Future<void> _mostrarDialogoSubidaNivel({
+    required int nivelAnterior,
+    required int nivelNuevo,
+    required int expTotal,
+    required int peepCoins,
+  }) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFDF2),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.black, width: 5),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black,
+                  blurRadius: 0,
+                  offset: Offset(7, 7),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '⭐ ¡SUBISTE DE NIVEL! ⭐',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 25,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD60A),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: Colors.black, width: 4),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black,
+                        blurRadius: 0,
+                        offset: Offset(4, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'NIVEL $nivelAnterior  →  NIVEL $nivelNuevo',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'EXP TOTAL: $expTotal',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'PEEP COINS: $peepCoins',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Sigue jugando para desbloquear nuevos avatares y punteros.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _ComicMainActionButton(
+                  text: 'CONTINUAR',
+                  onTap: () => Navigator.pop(dialogContext),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   int _safeInt(dynamic value) {
     if (value == null) return 0;
     if (value is int) return value;
     return int.tryParse(value.toString()) ?? 0;
   }
 
-  int get _nivelActual {
-    final nivel = (_expTotal ~/ 100) + 1;
-    return nivel < 1 ? 1 : nivel;
-  }
+  int get _nivelActual => _nivelDesdeExp(_expTotal);
 
   int get _expActualNivel {
     final exp = _expTotal % 100;
