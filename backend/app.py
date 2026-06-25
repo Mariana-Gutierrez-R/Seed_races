@@ -427,6 +427,129 @@ class GiroService:
             cur.close()
             conn.close()
 
+    def add_profile_rewards(self, cur, id_usuario, exp=0, coins=0):
+        """
+        Suma EXP y Peep Coins al perfil del usuario.
+
+        Esta función centraliza las recompensas del juego para que luego
+        se pueda reutilizar en logros, misiones, recompensas diarias o eventos.
+        No rompe el flujo si el usuario viene vacío o si no existe perfil.
+        """
+        if id_usuario is None:
+            return {
+                "aplicada": False,
+                "motivo": "sin id_usuario",
+                "exp_sumada": 0,
+                "coins_sumadas": 0,
+            }
+
+        try:
+            id_usuario = int(id_usuario)
+        except (TypeError, ValueError):
+            return {
+                "aplicada": False,
+                "motivo": "id_usuario inválido",
+                "exp_sumada": 0,
+                "coins_sumadas": 0,
+            }
+
+        exp = max(int(exp or 0), 0)
+        coins = max(int(coins or 0), 0)
+
+        if exp == 0 and coins == 0:
+            return {
+                "aplicada": False,
+                "motivo": "sin recompensa configurada",
+                "id_usuario": id_usuario,
+                "exp_sumada": 0,
+                "coins_sumadas": 0,
+            }
+
+        # Asegura que exista perfil_usuario para usuarios antiguos.
+        cur.execute("""
+            SELECT id_usuario
+            FROM perfil_usuario
+            WHERE id_usuario = %s
+            LIMIT 1
+        """, (id_usuario,))
+        perfil_existente = cur.fetchone()
+
+        if not perfil_existente:
+            cur.execute("""
+                SELECT nombre_usuario
+                FROM usuario
+                WHERE id_usuario = %s
+                LIMIT 1
+            """, (id_usuario,))
+            usuario = cur.fetchone()
+
+            if not usuario:
+                return {
+                    "aplicada": False,
+                    "motivo": "usuario no encontrado",
+                    "id_usuario": id_usuario,
+                    "exp_sumada": 0,
+                    "coins_sumadas": 0,
+                }
+
+            apodo = usuario[0] or "Peep Player"
+
+            cur.execute("""
+                INSERT INTO perfil_usuario (
+                    id_usuario,
+                    apodo,
+                    avatar_key,
+                    pointer_key,
+                    exp_total,
+                    peep_coins
+                )
+                VALUES (%s, %s, %s, %s, 0, 0)
+            """, (
+                id_usuario,
+                apodo,
+                "maga",
+                "puntero_clasico",
+            ))
+
+        cur.execute("""
+            UPDATE perfil_usuario
+            SET exp_total = COALESCE(exp_total, 0) + %s,
+                peep_coins = COALESCE(peep_coins, 0) + %s,
+                fecha_actualizacion = CURRENT_TIMESTAMP
+            WHERE id_usuario = %s
+        """, (
+            exp,
+            coins,
+            id_usuario,
+        ))
+
+        cur.execute("""
+            SELECT exp_total, peep_coins
+            FROM perfil_usuario
+            WHERE id_usuario = %s
+            LIMIT 1
+        """, (id_usuario,))
+        perfil = cur.fetchone()
+
+        exp_total = int(perfil[0] or 0) if perfil else exp
+        peep_coins = int(perfil[1] or 0) if perfil else coins
+        nivel_actual = (exp_total // 100) + 1
+        exp_siguiente_nivel = nivel_actual * 100
+        exp_inicio_nivel = (nivel_actual - 1) * 100
+        exp_en_nivel = exp_total - exp_inicio_nivel
+
+        return {
+            "aplicada": True,
+            "id_usuario": id_usuario,
+            "exp_sumada": exp,
+            "coins_sumadas": coins,
+            "exp_total": exp_total,
+            "peep_coins": peep_coins,
+            "nivel_actual": nivel_actual,
+            "exp_en_nivel": exp_en_nivel,
+            "exp_siguiente_nivel": exp_siguiente_nivel,
+        }
+
     def register_roulette_result(self, data):
         control = self.get_control_state()
 
@@ -514,15 +637,25 @@ class GiroService:
                 nombre_tabla_ruleta,
             ))
 
+            id_registro_ruleta = cur.lastrowid
+
+            recompensa_perfil = self.add_profile_rewards(
+                cur=cur,
+                id_usuario=id_usuario,
+                exp=10,
+                coins=5,
+            )
+
             conn.commit()
 
             return {
                 "mensaje": "Ruletazo guardado OK",
                 "id_sesion": control["id_sesion"],
                 "id_usuario": id_usuario,
-                "id_registro_ruleta": cur.lastrowid,
+                "id_registro_ruleta": id_registro_ruleta,
                 "id_ruleta": int(id_ruleta),
                 "nombre_tabla_ruleta": nombre_tabla_ruleta,
+                "recompensa_perfil": recompensa_perfil,
             }, 200
         finally:
             cur.close()
@@ -579,14 +712,216 @@ class GiroService:
                 id_tipo_dibujo,
             ))
 
+            id_registro_pregunta = cur.lastrowid
+
+            if pregunta_id and respuesta_id:
+                recompensa_perfil = self.add_profile_rewards(
+                    cur=cur,
+                    id_usuario=id_usuario,
+                    exp=15,
+                    coins=8,
+                )
+                tipo_recompensa = "pregunta"
+            else:
+                recompensa_perfil = self.add_profile_rewards(
+                    cur=cur,
+                    id_usuario=id_usuario,
+                    exp=20,
+                    coins=10,
+                )
+                tipo_recompensa = "tipo_dibujo"
+
             conn.commit()
 
             return {
                 "mensaje": "Registro de pregunta guardado OK",
                 "id_sesion": control["id_sesion"],
                 "id_usuario": id_usuario,
-                "id_registro_pregunta": cur.lastrowid,
+                "id_registro_pregunta": id_registro_pregunta,
                 "id_tipo_dibujo": id_tipo_dibujo,
+                "tipo_recompensa": tipo_recompensa,
+                "recompensa_perfil": recompensa_perfil,
+            }, 200
+        finally:
+            cur.close()
+            conn.close()
+
+    # ================== REWARD SERVICE ==================
+    def get_reward_summary(self, id_sesion=None):
+        """
+        Calcula el puntaje de la sesión actual y lista las recompensas disponibles.
+
+        Puntaje base:
+        - cada ruletazo guardado suma 10 puntos
+        - cada pregunta respondida suma 5 puntos
+        - escoger tipo de dibujo suma 20 puntos
+        """
+        control = self.get_control_state()
+
+        if not control:
+            return {"error": "no existe control_juego"}, 404
+
+        if id_sesion is None:
+            id_sesion = control["id_sesion"]
+
+        conn = self.get_db_connection()
+        cur = conn.cursor(dictionary=True, buffered=True)
+
+        try:
+            cur.execute("""
+                SELECT COUNT(*) AS total_ruletas
+                FROM registro_ruletas
+                WHERE id_sesion = %s
+            """, (id_sesion,))
+            total_ruletas = int((cur.fetchone() or {}).get("total_ruletas") or 0)
+
+            cur.execute("""
+                SELECT COUNT(*) AS total_preguntas
+                FROM registro_preguntas
+                WHERE id_sesion = %s
+                  AND id_pregunta IS NOT NULL
+                  AND id_respuesta IS NOT NULL
+            """, (id_sesion,))
+            total_preguntas = int((cur.fetchone() or {}).get("total_preguntas") or 0)
+
+            cur.execute("""
+                SELECT COUNT(*) AS total_tipo_dibujo
+                FROM registro_preguntas
+                WHERE id_sesion = %s
+                  AND id_tipo_dibujo IS NOT NULL
+            """, (id_sesion,))
+            total_tipo_dibujo = int((cur.fetchone() or {}).get("total_tipo_dibujo") or 0)
+
+            puntos_ruletas = total_ruletas * 10
+            puntos_preguntas = total_preguntas * 5
+            puntos_tipo_dibujo = total_tipo_dibujo * 20
+            puntos_totales = puntos_ruletas + puntos_preguntas + puntos_tipo_dibujo
+
+            cur.execute("""
+                SELECT
+                    id_recompensa,
+                    nombre_recompensa,
+                    descripcion_recompensa,
+                    puntos_requeridos,
+                    activo
+                FROM recompensa
+                WHERE activo = 1
+                ORDER BY puntos_requeridos ASC, id_recompensa ASC
+            """)
+            recompensas = cur.fetchall()
+
+            recompensas_disponibles = []
+            siguiente_recompensa = None
+
+            for recompensa in recompensas:
+                puntos_requeridos = int(recompensa.get("puntos_requeridos") or 0)
+                faltan = max(puntos_requeridos - puntos_totales, 0)
+
+                item = {
+                    "id_recompensa": recompensa["id_recompensa"],
+                    "nombre_recompensa": recompensa["nombre_recompensa"],
+                    "descripcion_recompensa": recompensa.get("descripcion_recompensa"),
+                    "puntos_requeridos": puntos_requeridos,
+                    "desbloqueada": puntos_totales >= puntos_requeridos,
+                    "puntos_faltantes": faltan,
+                }
+
+                if item["desbloqueada"]:
+                    recompensas_disponibles.append(item)
+                elif siguiente_recompensa is None:
+                    siguiente_recompensa = item
+
+            return {
+                "id_sesion": id_sesion,
+                "puntos_totales": puntos_totales,
+                "detalle_puntaje": {
+                    "total_ruletas": total_ruletas,
+                    "puntos_ruletas": puntos_ruletas,
+                    "total_preguntas": total_preguntas,
+                    "puntos_preguntas": puntos_preguntas,
+                    "total_tipo_dibujo": total_tipo_dibujo,
+                    "puntos_tipo_dibujo": puntos_tipo_dibujo,
+                },
+                "recompensas_disponibles": recompensas_disponibles,
+                "siguiente_recompensa": siguiente_recompensa,
+            }, 200
+        finally:
+            cur.close()
+            conn.close()
+
+    def grant_reward(self, data=None):
+        """
+        Guarda la recompensa obtenida por la sesión actual.
+        Si no llega id_recompensa, asigna automáticamente la mejor recompensa desbloqueada.
+        """
+        data = data or {}
+        control = self.get_control_state()
+
+        if not control:
+            return {"error": "no existe control_juego"}, 404
+
+        id_sesion = data.get("id_sesion") or control["id_sesion"]
+        id_usuario = data.get("id_usuario")
+        if id_usuario is None:
+            id_usuario = self.get_usuario_from_sesion(id_sesion)
+
+        resumen, status = self.get_reward_summary(id_sesion=id_sesion)
+        if status != 200:
+            return resumen, status
+
+        disponibles = resumen.get("recompensas_disponibles", [])
+        if not disponibles:
+            return {
+                "error": "todavía no hay recompensas desbloqueadas",
+                "id_sesion": id_sesion,
+                "puntos_totales": resumen.get("puntos_totales", 0),
+                "siguiente_recompensa": resumen.get("siguiente_recompensa"),
+            }, 409
+
+        id_recompensa = data.get("id_recompensa")
+        if id_recompensa is None:
+            recompensa = disponibles[-1]
+            id_recompensa = recompensa["id_recompensa"]
+        else:
+            recompensa = next(
+                (r for r in disponibles if int(r["id_recompensa"]) == int(id_recompensa)),
+                None,
+            )
+
+            if recompensa is None:
+                return {
+                    "error": "la recompensa no está desbloqueada para esta sesión",
+                    "id_recompensa": id_recompensa,
+                    "puntos_totales": resumen.get("puntos_totales", 0),
+                }, 409
+
+        conn = self.get_db_connection()
+        cur = conn.cursor(buffered=True)
+
+        try:
+            cur.execute("""
+                INSERT INTO registro_recompensas (
+                    id_sesion,
+                    id_usuario,
+                    id_recompensa,
+                    puntos_obtenidos
+                )
+                VALUES (%s, %s, %s, %s)
+            """, (
+                id_sesion,
+                id_usuario,
+                int(id_recompensa),
+                int(resumen.get("puntos_totales") or 0),
+            ))
+            conn.commit()
+
+            return {
+                "mensaje": "Recompensa guardada OK",
+                "id_sesion": id_sesion,
+                "id_usuario": id_usuario,
+                "id_registro_recompensa": cur.lastrowid,
+                "recompensa": recompensa,
+                "puntos_totales": resumen.get("puntos_totales", 0),
             }, 200
         finally:
             cur.close()
@@ -963,6 +1298,29 @@ def guardar_pregunta():
     data = request.get_json(force=False, silent=True) or {}
     result, status = game_service.register_question_result(data)
     return jsonify(result), status
+
+@app.get("/recompensas")
+def obtener_recompensas():
+    id_sesion = request.args.get("id_sesion")
+
+    if id_sesion:
+        try:
+            id_sesion = int(id_sesion)
+        except ValueError:
+            return jsonify({"error": "id_sesion debe ser numérico"}), 400
+    else:
+        id_sesion = None
+
+    result, status = game_service.get_reward_summary(id_sesion=id_sesion)
+    return jsonify(result), status
+
+
+@app.post("/guardar-recompensa")
+def guardar_recompensa():
+    data = request.get_json(force=False, silent=True) or {}
+    result, status = game_service.grant_reward(data)
+    return jsonify(result), status
+
 
 
 @app.post("/reiniciar-juego")
