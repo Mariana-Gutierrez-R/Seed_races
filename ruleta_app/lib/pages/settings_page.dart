@@ -83,6 +83,282 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
     return _nivelActual >= _nivelRequeridoPico(value);
   }
 
+  List<Map<String, String>> get _opcionesPuntero => const [
+    {'value': 'clasico', 'label': 'Clásico'},
+    {'value': 'radar', 'label': 'Radar'},
+    {'value': 'murcielago', 'label': 'Murciélago'},
+    {'value': 'rayo', 'label': 'Rayo'},
+    {'value': 'espada', 'label': 'Espada'},
+  ];
+
+  String _nombrePuntero(String value) {
+    switch (value) {
+      case 'radar':
+      case 'esfera':
+        return 'Radar';
+      case 'murcielago':
+        return 'Murciélago';
+      case 'rayo':
+        return 'Rayo';
+      case 'espada':
+      case 'anillo':
+        return 'Espada';
+      case 'clasico':
+      default:
+        return 'Clásico';
+    }
+  }
+
+  Future<void> _abrirSelectorPuntero() async {
+    String seleccionTemporal = _picoSeleccionado;
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: const Color.fromRGBO(0, 0, 0, 0.72),
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 24,
+              ),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFDF2),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.black, width: 5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black,
+                      blurRadius: 0,
+                      offset: Offset(7, 7),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'CAMBIAR PUNTERO',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 21,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Elige tu marcador',
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(dialogContext),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.black, width: 4),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  blurRadius: 0,
+                                  offset: Offset(3, 3),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.black,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _opcionesPuntero.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 1.15,
+                          ),
+                      itemBuilder: (_, index) {
+                        final opcion = _opcionesPuntero[index];
+                        final value = opcion['value']!;
+                        final label = opcion['label']!;
+                        final unlocked = _picoDesbloqueado(value);
+                        final selected =
+                            seleccionTemporal == value ||
+                            (seleccionTemporal == 'anillo' &&
+                                value == 'espada') ||
+                            (seleccionTemporal == 'esfera' && value == 'radar');
+
+                        return GestureDetector(
+                          onTap: unlocked
+                              ? () => setModalState(
+                                  () => seleccionTemporal = value,
+                                )
+                              : null,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: selected && unlocked
+                                  ? const Color(0xFFFFD85A)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: selected && unlocked ? 5 : 4,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  blurRadius: 0,
+                                  offset: Offset(
+                                    selected && unlocked ? 3 : 4,
+                                    selected && unlocked ? 3 : 4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Opacity(
+                                      opacity: unlocked ? 1 : 0.35,
+                                      child: _PointerVisual(
+                                        tipo: value,
+                                        width: 78,
+                                        height: 54,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    if (!unlocked)
+                                      Text(
+                                        'Nivel ${_nivelRequeridoPico(value)}',
+                                        style: const TextStyle(
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                if (selected && unlocked)
+                                  const Positioned(
+                                    right: 0,
+                                    top: 0,
+                                    child: Icon(
+                                      Icons.check_circle,
+                                      color: Colors.black,
+                                      size: 25,
+                                    ),
+                                  ),
+                                if (!unlocked)
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.black,
+                                        width: 4,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.lock,
+                                      color: Colors.black,
+                                      size: 22,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _picoSeleccionado = seleccionTemporal);
+                        Navigator.pop(dialogContext);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFD83D),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.black, width: 4),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black,
+                              blurRadius: 0,
+                              offset: Offset(4, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'GUARDAR',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _cargarNivelPerfil() async {
     if (!mounted) return;
 
@@ -271,74 +547,84 @@ class _SettingsComicPageState extends State<_SettingsComicPage> {
                     ),
                     const SizedBox(height: 18),
                     _SettingsCard(
-                      title: 'PICO DE LA RULETA',
+                      title: 'PUNTERO ACTUAL',
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            _cargandoPerfil
-                                ? 'Cargando nivel del jugador para validar desbloqueos...'
-                                : 'Elige la forma del marcador. Tu nivel actual es $_nivelActual · EXP $_expTotal.',
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
+                          const SizedBox(height: 18),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 18,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.black, width: 4),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black,
+                                  blurRadius: 0,
+                                  offset: Offset(5, 5),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                _PointerVisual(
+                                  tipo: _picoSeleccionado,
+                                  width: 140,
+                                  height: 92,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _nombrePuntero(
+                                    _picoSeleccionado,
+                                  ).toUpperCase(),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 18,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          _PicoOptionTile(
-                            value: 'clasico',
-                            label: 'Pico clásico',
-                            selected: _picoSeleccionado == 'clasico',
-                            unlocked: _picoDesbloqueado('clasico'),
-                            requiredLevel: _nivelRequeridoPico('clasico'),
-                            onTap: () =>
-                                setState(() => _picoSeleccionado = 'clasico'),
-                          ),
-                          const SizedBox(height: 10),
-                          _PicoOptionTile(
-                            value: 'radar',
-                            label: 'Radar',
-                            selected:
-                                _picoSeleccionado == 'radar' ||
-                                _picoSeleccionado == 'esfera',
-                            unlocked: _picoDesbloqueado('radar'),
-                            requiredLevel: _nivelRequeridoPico('radar'),
-                            onTap: () =>
-                                setState(() => _picoSeleccionado = 'radar'),
-                          ),
-                          const SizedBox(height: 10),
-                          _PicoOptionTile(
-                            value: 'murcielago',
-                            label: 'Murciélago',
-                            selected: _picoSeleccionado == 'murcielago',
-                            unlocked: _picoDesbloqueado('murcielago'),
-                            requiredLevel: _nivelRequeridoPico('murcielago'),
-                            onTap: () => setState(
-                              () => _picoSeleccionado = 'murcielago',
+                          const SizedBox(height: 18),
+                          GestureDetector(
+                            onTap: _abrirSelectorPuntero,
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFD85A),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 4,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black,
+                                    blurRadius: 0,
+                                    offset: Offset(4, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                'CAMBIAR PUNTERO',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  letterSpacing: 1,
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          _PicoOptionTile(
-                            value: 'rayo',
-                            label: 'Rayo',
-                            selected: _picoSeleccionado == 'rayo',
-                            unlocked: _picoDesbloqueado('rayo'),
-                            requiredLevel: _nivelRequeridoPico('rayo'),
-                            onTap: () =>
-                                setState(() => _picoSeleccionado = 'rayo'),
-                          ),
-                          const SizedBox(height: 10),
-                          _PicoOptionTile(
-                            value: 'espada',
-                            label: 'Espada',
-                            selected:
-                                _picoSeleccionado == 'espada' ||
-                                _picoSeleccionado == 'anillo',
-                            unlocked: _picoDesbloqueado('espada'),
-                            requiredLevel: _nivelRequeridoPico('espada'),
-                            onTap: () =>
-                                setState(() => _picoSeleccionado = 'espada'),
                           ),
                         ],
                       ),
