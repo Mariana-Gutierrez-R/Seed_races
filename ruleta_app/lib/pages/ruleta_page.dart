@@ -71,6 +71,14 @@ class _RuletaPageState extends State<RuletaPage>
   Set<Color> _coloresRandomActivos = {};
   String _picoSeleccionado = 'clasico';
 
+  Map<String, dynamic>? _perfilStats;
+  bool _cargandoPerfilStats = false;
+
+  bool _mostrarStickersRecompensa = false;
+  int _stickerExp = 0;
+  int _stickerCoins = 0;
+  int _stickerToken = 0;
+
   final List<Color> _fondos = const [
     Color(0xFF00B7FF),
     Color(0xFFFF3B30),
@@ -116,6 +124,7 @@ class _RuletaPageState extends State<RuletaPage>
 
     _coloresRandomActivos = _fondos.toSet();
     _cargarPreferenciasVisuales();
+    _cargarPerfilStats();
 
     _juego = _juegoInicialParaModo();
     _nivel = _nivelInicialParaModo();
@@ -172,6 +181,75 @@ class _RuletaPageState extends State<RuletaPage>
       _coloresRandomActivos.map((c) => _colorToInt(c).toString()).toList(),
     );
     await prefs.setString('ajustes_pico_ruleta', _picoSeleccionado);
+  }
+
+  int _safeInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  Map<String, dynamic> _perfilStatsDesdeCache(SharedPreferences prefs) {
+    final expTotal = prefs.getInt('perfil_exp_total') ?? 0;
+    final peepCoins = prefs.getInt('perfil_peep_coins') ?? 0;
+    final nivelActual = (expTotal ~/ 100) + 1;
+    final expEnNivel = expTotal % 100;
+
+    return {
+      'nivel_actual': nivelActual,
+      'peep_coins': peepCoins,
+      'exp_total': expTotal,
+      'exp_en_nivel': expEnNivel,
+      'exp_siguiente_nivel': 100,
+      'progreso_nivel': expEnNivel / 100,
+    };
+  }
+
+  Future<void> _cargarPerfilStats({bool silencioso = false}) async {
+    if (!mounted) return;
+
+    if (!silencioso) {
+      setState(() => _cargandoPerfilStats = true);
+    }
+
+    try {
+      final idUsuario = await AuthService.getIdUsuario();
+
+      if (idUsuario == null) {
+        final prefs = await SharedPreferences.getInstance();
+        if (!mounted) return;
+        setState(() {
+          _perfilStats = _perfilStatsDesdeCache(prefs);
+          _cargandoPerfilStats = false;
+        });
+        return;
+      }
+
+      final perfil = await ApiService.getPerfilBurbuja(idUsuario);
+
+      final expTotal = _safeInt(perfil['exp_total']);
+      final peepCoins = _safeInt(perfil['peep_coins']);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('perfil_exp_total', expTotal);
+      await prefs.setInt('perfil_peep_coins', peepCoins);
+
+      if (!mounted) return;
+
+      setState(() {
+        _perfilStats = perfil;
+        _cargandoPerfilStats = false;
+      });
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+
+      if (!mounted) return;
+
+      setState(() {
+        _perfilStats = _perfilStatsDesdeCache(prefs);
+        _cargandoPerfilStats = false;
+      });
+    }
   }
 
   // ================== ANIMATION ==================
@@ -503,6 +581,40 @@ class _RuletaPageState extends State<RuletaPage>
     }
   }
 
+  void _mostrarStickersGanancia({required int exp, required int coins}) {
+    if (!mounted) return;
+
+    final token = _stickerToken + 1;
+
+    setState(() {
+      _stickerToken = token;
+      _stickerExp = exp;
+      _stickerCoins = coins;
+      _mostrarStickersRecompensa = true;
+    });
+
+    Future<void>.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted || _stickerToken != token) return;
+      _ocultarStickersGanancia();
+    });
+  }
+
+  void _ocultarStickersGanancia() {
+    if (!mounted) return;
+    if (!_mostrarStickersRecompensa) return;
+
+    setState(() {
+      _mostrarStickersRecompensa = false;
+    });
+  }
+
+  Future<void> _esperarYCerrarStickersGanancia() async {
+    await Future<void>.delayed(const Duration(milliseconds: 620));
+    if (!mounted) return;
+    _ocultarStickersGanancia();
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+  }
+
   // ================== GAME FLOW ==================
 
   Future<void> _procesarSeleccionRuleta(String selected) async {
@@ -524,23 +636,23 @@ class _RuletaPageState extends State<RuletaPage>
         nombreTablaRuleta: _nombreTablaParaNivel(_nivel),
         valor: selected,
       );
+      await _cargarPerfilStats(silencioso: true);
+      _mostrarStickersGanancia(exp: 10, coins: 5);
 
       final siguienteEvento = await ApiService.decidirEvento('ruleta');
+      await _esperarYCerrarStickersGanancia();
 
       if (siguienteNivel == null) {
-        await Future<void>.delayed(const Duration(milliseconds: 1000));
         await _mostrarSeleccionTipoDibujo();
         return;
       }
 
       if (siguienteEvento == 'pregunta') {
-        await Future<void>.delayed(const Duration(milliseconds: 1000));
         await _cargarPregunta();
         return;
       }
 
       if (siguienteEvento == 'ruleta') {
-        await Future<void>.delayed(const Duration(milliseconds: 450));
         await _continuarRuleta();
         return;
       }
@@ -583,17 +695,18 @@ class _RuletaPageState extends State<RuletaPage>
         preguntaId: _preguntaActual!.id,
         respuestaId: respuestaId,
       );
+      await _cargarPerfilStats(silencioso: true);
+      _mostrarStickersGanancia(exp: 15, coins: 8);
 
       final siguienteEvento = await ApiService.decidirEvento('pregunta');
+      await _esperarYCerrarStickersGanancia();
 
       if (siguienteEvento == 'pregunta') {
-        await Future<void>.delayed(const Duration(milliseconds: 600));
         await _cargarPregunta();
         return;
       }
 
       if (siguienteEvento == 'ruleta') {
-        await Future<void>.delayed(const Duration(milliseconds: 450));
         await _continuarRuleta();
         return;
       }
@@ -668,6 +781,8 @@ class _RuletaPageState extends State<RuletaPage>
 
     try {
       await ApiService.guardarTipoDibujo(tipoDibujo: tipo);
+      await _cargarPerfilStats(silencioso: true);
+      _mostrarStickersGanancia(exp: 20, coins: 10);
 
       PersonajeModel? personajeAfin;
 
@@ -678,6 +793,8 @@ class _RuletaPageState extends State<RuletaPage>
           personajeAfin = null;
         }
       }
+
+      await _esperarYCerrarStickersGanancia();
 
       if (!mounted) return;
       setState(() {
@@ -949,7 +1066,7 @@ class _RuletaPageState extends State<RuletaPage>
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         if (_mostrandoLobby) ...[
                           _LobbyComic(
                             personaje: _personajeFinal,
@@ -1095,10 +1212,151 @@ class _RuletaPageState extends State<RuletaPage>
                   ),
                 ),
               ),
+              _RewardStickerOverlay(
+                visible: _mostrarStickersRecompensa,
+                exp: _stickerExp,
+                coins: _stickerCoins,
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+// ================== REWARD STICKERS ==================
+
+class _RewardStickerOverlay extends StatelessWidget {
+  final bool visible;
+  final int exp;
+  final int coins;
+
+  const _RewardStickerOverlay({
+    required this.visible,
+    required this.exp,
+    required this.coins,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        child: AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, 0.18),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutBack,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 28, right: 28, bottom: 142),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Transform.rotate(
+                    angle: -0.07,
+                    child: _ComicRewardSticker(
+                      label: '+$exp EXP',
+                      icon: Icons.star,
+                      backgroundColor: const Color(0xFF20A8FF),
+                      width: 126,
+                    ),
+                  ),
+                  Transform.rotate(
+                    angle: 0.07,
+                    child: _ComicRewardSticker(
+                      label: '+$coins',
+                      icon: Icons.monetization_on,
+                      backgroundColor: const Color(0xFFFFD60A),
+                      width: 96,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComicRewardSticker extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color backgroundColor;
+  final double width;
+
+  const _ComicRewardSticker({
+    required this.label,
+    required this.icon,
+    required this.backgroundColor,
+    required this.width,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: 5,
+          top: 5,
+          child: Container(
+            width: width,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(22),
+            ),
+          ),
+        ),
+        Container(
+          width: width,
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.black, width: 3),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.black, size: 19),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Positioned(
+          right: -6,
+          top: -8,
+          child: Text(
+            '✦',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              shadows: [Shadow(color: Colors.black, offset: Offset(1.5, 1.5))],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
