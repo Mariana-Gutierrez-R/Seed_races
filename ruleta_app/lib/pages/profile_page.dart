@@ -13,7 +13,8 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage>
+    with SingleTickerProviderStateMixin {
   int _expTotal = 0;
   int _peepCoins = 0;
 
@@ -27,6 +28,8 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _cargandoPerfil = true;
   bool _guardandoAvatar = false;
   String? _mensajePerfil;
+  late final AnimationController _avatarPulseController;
+  late final Animation<double> _avatarPulseAnimation;
 
   final List<Color> _fondos = const [
     Color(0xFF00B7FF),
@@ -67,9 +70,40 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    _avatarPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _avatarPulseAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 1.08,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.08,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 55,
+      ),
+    ]).animate(_avatarPulseController);
     _coloresRandomActivos = _fondos.toSet();
     _cargarPreferencias();
     _cargarPerfil();
+
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      _avatarPulseController.forward(from: 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _avatarPulseController.dispose();
+    super.dispose();
   }
 
   int _colorToInt(Color c) => c.value;
@@ -454,6 +488,251 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _abrirAvatarPantallaCompleta() {
+    if (_cargandoPerfil) return;
+
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.92),
+      builder: (dialogContext) {
+        return Material(
+          color: Colors.black,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 18,
+                  left: 18,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.pop(dialogContext),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 42,
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 26),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 260,
+                          height: 260,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x66000000),
+                                blurRadius: 24,
+                                offset: Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              _avatarPath(_avatarKey),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) {
+                                return const Icon(
+                                  Icons.person,
+                                  color: Colors.black,
+                                  size: 130,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 34),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(dialogContext);
+                            Future.delayed(
+                              const Duration(milliseconds: 120),
+                              () {
+                                if (!mounted) return;
+                                _abrirSelectorAvatarJuego();
+                              },
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 34,
+                              vertical: 18,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF343434),
+                              borderRadius: BorderRadius.circular(32),
+                            ),
+                            child: const Text(
+                              'Cambiar avatar',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _abrirSelectorAvatarJuego() {
+    if (_avatares.isEmpty) return;
+
+    String avatarSeleccionado = _avatarKey;
+    String? mensajeLocal;
+    bool guardandoLocal = false;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              margin: const EdgeInsets.fromLTRB(12, 18, 12, 12),
+              padding: EdgeInsets.fromLTRB(
+                18,
+                16,
+                18,
+                18 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF0CF),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.black, width: 5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black,
+                    blurRadius: 0,
+                    offset: Offset(6, 6),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        _ProfileStepIconButton(
+                          icon: Icons.close,
+                          onTap: () => Navigator.pop(sheetContext),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: _ExplosiveTitle(
+                            text: 'CAMBIAR\nAVATAR',
+                            subtitle: 'ELIGE TU PERSONAJE',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.9,
+                          ),
+                      itemCount: _avatares.length,
+                      itemBuilder: (context, index) {
+                        final avatar = _avatares[index];
+                        final selected = avatar.keyName == avatarSeleccionado;
+                        final locked =
+                            !_avatarDesbloqueado(avatar) && !selected;
+
+                        return _AvatarChoiceCard(
+                          avatar: avatar,
+                          selected: selected,
+                          locked: locked,
+                          saving: guardandoLocal,
+                          onTap: () {
+                            setSheetState(() {
+                              avatarSeleccionado = avatar.keyName;
+                              mensajeLocal = null;
+                            });
+                          },
+                        );
+                      },
+                    ),
+                    if (mensajeLocal != null) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        mensajeLocal!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    _ComicMainActionButton(
+                      text: guardandoLocal ? 'GUARDANDO...' : 'GUARDAR',
+                      onTap: guardandoLocal
+                          ? null
+                          : () async {
+                              final avatar = _avatares.firstWhere(
+                                (item) => item.keyName == avatarSeleccionado,
+                                orElse: () => _avatares.first,
+                              );
+
+                              if (!_avatarDesbloqueado(avatar)) {
+                                setSheetState(() {
+                                  mensajeLocal =
+                                      'Este avatar se desbloquea en nivel ${avatar.requiredLevel}.';
+                                });
+                                return;
+                              }
+
+                              setSheetState(() {
+                                guardandoLocal = true;
+                                mensajeLocal = null;
+                              });
+
+                              await _guardarAvatar(avatar);
+
+                              if (!mounted) return;
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                            },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _abrirDesbloqueos() {
     Navigator.push(
       context,
@@ -513,11 +792,18 @@ class _ProfilePageState extends State<ProfilePage> {
                             )
                           : Column(
                               children: [
-                                _ProfileAvatarPreview(
-                                  assetPath: _avatarPath(_avatarKey),
-                                  fallbackIcon: Icons.person,
+                                ScaleTransition(
+                                  scale: _avatarPulseAnimation,
+                                  child: GestureDetector(
+                                    onTap: _abrirAvatarPantallaCompleta,
+                                    onLongPress: _abrirAvatarPantallaCompleta,
+                                    child: _ProfileAvatarPreview(
+                                      assetPath: _avatarPath(_avatarKey),
+                                      fallbackIcon: Icons.person,
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 18),
                                 Text(
                                   _apodo,
                                   textAlign: TextAlign.center,
@@ -544,68 +830,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                   text: 'EDITAR APODO',
                                   onTap: _editarApodo,
                                 ),
+                                if (_mensajePerfil != null) ...[
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    _mensajePerfil!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
-                    ),
-                    const SizedBox(height: 18),
-                    _ProfileStepCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _ExplosiveTitle(
-                            text: 'CAMBIAR\nAVATAR',
-                            subtitle: 'BLOQUEO POR NIVEL REAL',
-                          ),
-                          const SizedBox(height: 14),
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: 0.82,
-                                ),
-                            itemCount: _avatares.length,
-                            itemBuilder: (context, index) {
-                              final avatar = _avatares[index];
-                              final selected = avatar.keyName == _avatarKey;
-                              final locked =
-                                  !_avatarDesbloqueado(avatar) && !selected;
-
-                              return _AvatarChoiceCard(
-                                avatar: avatar,
-                                selected: selected,
-                                locked: locked,
-                                saving: _guardandoAvatar,
-                                onTap: () => _guardarAvatar(avatar),
-                              );
-                            },
-                          ),
-                          if (_guardandoAvatar) ...[
-                            const SizedBox(height: 14),
-                            const Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.black,
-                              ),
-                            ),
-                          ],
-                          if (_mensajePerfil != null) ...[
-                            const SizedBox(height: 14),
-                            Text(
-                              _mensajePerfil!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                                height: 1.25,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 18),
                     _ProfileStepCard(
