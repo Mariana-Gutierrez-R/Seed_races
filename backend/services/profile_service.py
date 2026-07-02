@@ -155,3 +155,112 @@ def serializar_burbuja_usuario(perfil):
         "progreso_nivel": perfil_serializado["progreso_nivel"],
     }
 
+# ================== CUSTOMIZATION CONFIG ==================
+AVATARES_PERMITIDOS = {"maga", "payaso", "sayajin", "dragon"}
+PUNTEROS_PERMITIDOS = {
+    "puntero_clasico",
+    "puntero_radar",
+    "puntero_murcielago",
+    "puntero_rayo",
+    "puntero_espada",
+}
+
+
+def obtener_opciones_personalizacion(perfil):
+    perfil_serializado = serializar_perfil_usuario(perfil)
+
+    if not perfil_serializado:
+        return None
+
+    return {
+        "id_usuario": perfil_serializado["id_usuario"],
+        "avatar_actual": {
+            "key": perfil_serializado["avatar_key"],
+            "asset": perfil_serializado["avatar_asset"],
+        },
+        "puntero_actual": {
+            "key": perfil_serializado["pointer_key"],
+            "asset": perfil_serializado["pointer_asset"],
+        },
+        "avatares": [
+            {
+                "key": avatar_key,
+                "asset": f"assets/images/avatars/{avatar_key}.png",
+                "seleccionado": avatar_key == perfil_serializado["avatar_key"],
+            }
+            for avatar_key in sorted(AVATARES_PERMITIDOS)
+        ],
+        "punteros": [
+            {
+                "key": pointer_key,
+                "asset": f"assets/images/pointers/{pointer_key}.png",
+                "seleccionado": pointer_key == perfil_serializado["pointer_key"],
+            }
+            for pointer_key in sorted(PUNTEROS_PERMITIDOS)
+        ],
+    }
+
+
+def actualizar_avatar_usuario(cur, id_usuario, avatar_key):
+    avatar_key = (avatar_key or "").strip()
+
+    if avatar_key not in AVATARES_PERMITIDOS:
+        return {
+            "error": "avatar_key no permitido",
+            "permitidos": sorted(AVATARES_PERMITIDOS),
+        }, 400
+
+    perfil = asegurar_perfil_usuario(cur, id_usuario)
+
+    if not perfil:
+        return {"error": "Perfil no encontrado"}, 404
+
+    cur.execute("""
+        UPDATE perfil_usuario
+        SET avatar_key = %s,
+            fecha_actualizacion = CURRENT_TIMESTAMP
+        WHERE id_usuario = %s
+    """, (
+        avatar_key,
+        id_usuario,
+    ))
+
+    return {
+        "mensaje": "Avatar actualizado",
+        "id_usuario": id_usuario,
+        "avatar_key": avatar_key,
+        "avatar_asset": f"assets/images/avatars/{avatar_key}.png",
+    }, 200
+
+
+def actualizar_puntero_usuario(cur, id_usuario, pointer_key):
+    pointer_key = (pointer_key or "").strip()
+
+    if pointer_key not in PUNTEROS_PERMITIDOS:
+        return {
+            "error": "pointer_key no permitido",
+            "permitidos": sorted(PUNTEROS_PERMITIDOS),
+        }, 400
+
+    perfil = asegurar_perfil_usuario(cur, id_usuario)
+
+    if not perfil:
+        return {"error": "Perfil no encontrado"}, 404
+
+    cur.execute("""
+        UPDATE perfil_usuario
+        SET pointer_key = %s,
+            fecha_actualizacion = CURRENT_TIMESTAMP
+        WHERE id_usuario = %s
+    """, (
+        pointer_key,
+        id_usuario,
+    ))
+
+    return {
+        "mensaje": "Puntero actualizado",
+        "id_usuario": id_usuario,
+        "pointer_key": pointer_key,
+        "pointer_asset": f"assets/images/pointers/{pointer_key}.png",
+    }, 200
+

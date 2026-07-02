@@ -7,6 +7,9 @@ from services.profile_service import (
     asegurar_perfil_usuario,
     serializar_perfil_usuario,
     serializar_burbuja_usuario,
+    obtener_opciones_personalizacion,
+    actualizar_avatar_usuario,
+    actualizar_puntero_usuario,
 )
 import re
 import secrets
@@ -698,24 +701,8 @@ def obtener_burbuja_usuario(id_usuario):
         conn.close()
 
 
-@app.post("/perfil/avatar")
-def actualizar_avatar_perfil():
-    data = request.get_json(force=False, silent=True) or {}
-
-    id_usuario = data.get("id_usuario")
-    avatar_key = (data.get("avatar_key") or "").strip()
-
-    avatares_permitidos = {"maga", "payaso", "sayajin", "dragon"}
-
-    if not id_usuario:
-        return jsonify({"error": "id_usuario requerido"}), 400
-
-    if avatar_key not in avatares_permitidos:
-        return jsonify({
-            "error": "avatar_key no permitido",
-            "permitidos": sorted(avatares_permitidos),
-        }), 400
-
+@app.get("/perfil/personalizacion/<int:id_usuario>")
+def obtener_personalizacion_perfil(id_usuario):
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True, buffered=True)
 
@@ -725,24 +712,65 @@ def actualizar_avatar_perfil():
         if not perfil:
             return jsonify({"error": "Perfil no encontrado"}), 404
 
-        cur.execute("""
-            UPDATE perfil_usuario
-            SET avatar_key = %s,
-                fecha_actualizacion = CURRENT_TIMESTAMP
-            WHERE id_usuario = %s
-        """, (
-            avatar_key,
-            id_usuario,
-        ))
-
         conn.commit()
 
-        return jsonify({
-            "mensaje": "Avatar actualizado",
-            "id_usuario": id_usuario,
-            "avatar_key": avatar_key,
-            "avatar_asset": f"assets/images/avatars/{avatar_key}.png",
-        }), 200
+        return jsonify(obtener_opciones_personalizacion(perfil)), 200
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.post("/perfil/avatar")
+def actualizar_avatar_perfil():
+    data = request.get_json(force=False, silent=True) or {}
+
+    id_usuario = data.get("id_usuario")
+    avatar_key = data.get("avatar_key")
+
+    if not id_usuario:
+        return jsonify({"error": "id_usuario requerido"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True, buffered=True)
+
+    try:
+        result, status = actualizar_avatar_usuario(cur, id_usuario, avatar_key)
+
+        if status == 200:
+            conn.commit()
+        else:
+            conn.rollback()
+
+        return jsonify(result), status
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.post("/perfil/puntero")
+def actualizar_puntero_perfil():
+    data = request.get_json(force=False, silent=True) or {}
+
+    id_usuario = data.get("id_usuario")
+    pointer_key = data.get("pointer_key")
+
+    if not id_usuario:
+        return jsonify({"error": "id_usuario requerido"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True, buffered=True)
+
+    try:
+        result, status = actualizar_puntero_usuario(cur, id_usuario, pointer_key)
+
+        if status == 200:
+            conn.commit()
+        else:
+            conn.rollback()
+
+        return jsonify(result), status
 
     finally:
         cur.close()
