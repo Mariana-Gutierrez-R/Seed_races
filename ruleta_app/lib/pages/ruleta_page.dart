@@ -949,7 +949,7 @@ class _RuletaPageState extends State<RuletaPage>
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         if (_mostrandoLobby) ...[
                           _LobbyComic(
                             personaje: _personajeFinal,

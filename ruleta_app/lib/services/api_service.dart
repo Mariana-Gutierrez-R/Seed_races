@@ -43,7 +43,6 @@ class ApiService {
     return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   }
 
-
   static Future<Map<String, dynamic>> _getAuth(
     String path, [
     Map<String, String>? params,
@@ -259,6 +258,9 @@ class ApiService {
     await _post('/reiniciar-juego', body: {'id_usuario': idUsuario});
   }
 
+  static Future<Map<String, dynamic>> getPerfilBurbuja(int idUsuario) async {
+    return _getAuth('/perfil/burbuja/$idUsuario');
+  }
 
   static Future<Map<String, dynamic>> getPerfilUsuario(int idUsuario) async {
     return _getAuth('/perfil/$idUsuario');
@@ -270,10 +272,7 @@ class ApiService {
   }) async {
     return _postAuth(
       '/perfil/avatar',
-      body: {
-        'id_usuario': idUsuario,
-        'avatar_key': avatarKey,
-      },
+      body: {'id_usuario': idUsuario, 'avatar_key': avatarKey},
     );
   }
 }

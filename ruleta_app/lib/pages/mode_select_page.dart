@@ -25,6 +25,8 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
   bool _coloresAleatorios = false;
   Color _colorFijo = const Color(0xFFFFD60A);
   Set<Color> _coloresRandomActivos = {};
+  Map<String, dynamic>? _perfilBurbuja;
+  bool _cargandoPerfilBurbuja = true;
 
   final List<Color> _fondos = const [
     Color(0xFF00B7FF),
@@ -40,10 +42,51 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
     super.initState();
     _coloresRandomActivos = _fondos.toSet();
     _cargarPreferencias();
+    _cargarPerfilBurbuja();
   }
 
   int _colorToInt(Color c) => c.value;
   Color _intToColor(int value) => Color(value);
+
+  Future<void> _cargarPerfilBurbuja() async {
+    final prefs = await SharedPreferences.getInstance();
+    final apodoLocal = (prefs.getString('perfil_apodo') ?? '').trim();
+
+    try {
+      final idUsuario = await AuthService.getIdUsuario();
+
+      if (idUsuario == null) {
+        if (!mounted) return;
+        setState(() {
+          _perfilBurbuja = apodoLocal.isEmpty ? null : {'apodo': apodoLocal};
+          _cargandoPerfilBurbuja = false;
+        });
+        return;
+      }
+
+      final perfilBackend = await ApiService.getPerfilBurbuja(idUsuario);
+      final perfil = Map<String, dynamic>.from(perfilBackend);
+
+      // El apodo actualmente se guarda desde la pantalla de perfil en
+      // SharedPreferences. Por eso lo usamos como prioridad local para que
+      // el lobby se actualice al volver desde Perfil sin tocar backend.
+      if (apodoLocal.isNotEmpty) {
+        perfil['apodo'] = apodoLocal;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _perfilBurbuja = perfil;
+        _cargandoPerfilBurbuja = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _perfilBurbuja = apodoLocal.isEmpty ? null : {'apodo': apodoLocal};
+        _cargandoPerfilBurbuja = false;
+      });
+    }
+  }
 
   Future<void> _cargarPreferencias() async {
     final prefs = await SharedPreferences.getInstance();
@@ -116,6 +159,16 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
     );
   }
 
+  void _abrirPerfil() {
+    widget.onOpenProfile?.call();
+
+    // Al volver desde perfil, refrescamos los datos por si cambió apodo,
+    // avatar, nivel o monedas. No afecta navegación ni lógica del juego.
+    Future.delayed(const Duration(milliseconds: 350), _cargarPerfilBurbuja);
+    Future.delayed(const Duration(milliseconds: 900), _cargarPerfilBurbuja);
+    Future.delayed(const Duration(milliseconds: 1600), _cargarPerfilBurbuja);
+  }
+
   @override
   Widget build(BuildContext context) {
     final bg = _coloresAleatorios ? _fondoActual : _colorFijo;
@@ -134,10 +187,10 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     return SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(18, 34, 18, 24),
+                      padding: const EdgeInsets.fromLTRB(18, 120, 18, 24),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight - 58,
+                          minHeight: constraints.maxHeight - 142,
                         ),
                         child: Column(
                           children: [
@@ -177,29 +230,325 @@ class _ModeSelectPageState extends State<ModeSelectPage> {
                 ),
 
                 Positioned(
-                  top: 6,
+                  top: 10,
+                  left: 14,
                   right: 14,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.onOpenProfile != null) ...[
-                        _ModeTopIconButton(
-                          icon: Icons.person,
-                          onTap: widget.onOpenProfile!,
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      _ModeTopIconButton(
-                        icon: Icons.settings,
-                        onTap: _abrirAjustes,
-                      ),
-                    ],
+                  child: _ModeLobbyPlayerHud(
+                    perfil: _perfilBurbuja,
+                    cargando: _cargandoPerfilBurbuja,
+                    onOpenProfile: widget.onOpenProfile == null
+                        ? null
+                        : _abrirPerfil,
+                    onOpenSettings: _abrirAjustes,
                   ),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ModeLobbyPlayerHud extends StatelessWidget {
+  final Map<String, dynamic>? perfil;
+  final bool cargando;
+  final VoidCallback? onOpenProfile;
+  final VoidCallback onOpenSettings;
+
+  const _ModeLobbyPlayerHud({
+    required this.perfil,
+    required this.cargando,
+    required this.onOpenProfile,
+    required this.onOpenSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final apodo = cargando
+        ? 'Cargando...'
+        : (perfil?['apodo'] ?? 'Jugador').toString();
+    final avatarAsset =
+        (perfil?['avatar_asset'] ?? 'assets/images/avatars/maga.png')
+            .toString();
+    final nivel = int.tryParse('${perfil?['nivel_actual'] ?? 1}') ?? 1;
+    final coins = int.tryParse('${perfil?['peep_coins'] ?? 0}') ?? 0;
+    final expEnNivel = int.tryParse('${perfil?['exp_en_nivel'] ?? 0}') ?? 0;
+    final progresoRaw =
+        double.tryParse('${perfil?['progreso_nivel'] ?? 0}') ?? 0.0;
+    final progreso = progresoRaw.clamp(0.0, 1.0);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ModeLobbyAvatar(avatarAsset: avatarAsset),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ModeLobbyNameBar(apodo: apodo),
+              const SizedBox(height: 7),
+              Row(
+                children: [
+                  if (onOpenProfile != null) ...[
+                    _ModeLobbySmallButton(
+                      icon: Icons.person,
+                      onTap: onOpenProfile!,
+                    ),
+                    const SizedBox(width: 7),
+                  ],
+                  _ModeLobbySmallButton(
+                    icon: Icons.settings,
+                    onTap: onOpenSettings,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: _ModeLobbyExpBar(
+                      nivel: nivel,
+                      expEnNivel: expEnNivel,
+                      progreso: progreso,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  _ModeLobbyCoinsBar(coins: coins),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModeLobbyAvatar extends StatelessWidget {
+  final String avatarAsset;
+
+  const _ModeLobbyAvatar({required this.avatarAsset});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 62,
+      height: 62,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black, width: 4),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(4, 4)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          avatarAsset,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              const Icon(Icons.person, color: Colors.black, size: 32),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeLobbyNameBar extends StatelessWidget {
+  final String apodo;
+
+  const _ModeLobbyNameBar({required this.apodo});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 32,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
+        ],
+      ),
+      child: Text(
+        apodo,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.black,
+          fontSize: 15,
+          fontWeight: FontWeight.w900,
+          height: 1.05,
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeLobbySmallButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ModeLobbySmallButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 30,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: Colors.black, width: 3),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
+          ],
+        ),
+        child: Icon(icon, color: Colors.black, size: 19),
+      ),
+    );
+  }
+}
+
+class _ModeLobbyExpBar extends StatelessWidget {
+  final int nivel;
+  final int expEnNivel;
+  final double progreso;
+
+  const _ModeLobbyExpBar({
+    required this.nivel,
+    required this.expEnNivel,
+    required this.progreso,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 30,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF2),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.black, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final innerWidth = (constraints.maxWidth - 6).clamp(
+            0.0,
+            double.infinity,
+          );
+          final progressWidth = innerWidth * progreso.clamp(0.0, 1.0);
+
+          return Stack(
+            children: [
+              if (progressWidth > 0)
+                Positioned(
+                  left: 3,
+                  top: 3,
+                  bottom: 3,
+                  child: Container(
+                    width: progressWidth,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2F80ED),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              Positioned.fill(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.star, color: Colors.black, size: 15),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Nv $nivel · $expEnNivel/100',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ModeLobbyCoinsBar extends StatelessWidget {
+  final int coins;
+
+  const _ModeLobbyCoinsBar({required this.coins});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 30,
+      constraints: const BoxConstraints(minWidth: 64, maxWidth: 86),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE35A),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: Colors.black, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, blurRadius: 0, offset: Offset(3, 3)),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFC400),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.black, width: 2),
+            ),
+            child: const Text(
+              r'$',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                height: 1.1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              '$coins',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -245,10 +594,10 @@ class _ModeHeader extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white,
-            fontSize: 36,
+            fontSize: 40,
             fontWeight: FontWeight.w900,
             height: 0.88,
-            letterSpacing: 1,
+            letterSpacing: 1.1,
             shadows: [
               Shadow(offset: Offset(4, 0), color: Colors.black),
               Shadow(offset: Offset(-4, 0), color: Colors.black),
