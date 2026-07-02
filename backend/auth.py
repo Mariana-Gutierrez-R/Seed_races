@@ -2,8 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
-import mysql.connector
-import os
+from database.mysql import get_db_connection
 import re
 import secrets
 import hashlib
@@ -20,17 +19,6 @@ CORS(app)
 TOKEN_HOURS = 8
 PHONE_CODE_MINUTES = 10
 
-
-# ================== DB ==================
-def get_db_connection():
-    return mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME"),
-        autocommit=False,
-        connection_timeout=5,
-    )
 
 
 # ================== HELPERS ==================

@@ -1,8 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import mysql.connector
 from dotenv import load_dotenv
-import os
+from database.mysql import get_db_connection as create_db_connection
 import random
 
 # ================== LOAD ENV VARIABLES ==================
@@ -19,21 +18,8 @@ CORS(app)
 
 # ================== GAME SERVICE ==================
 class GiroService:
-    def __init__(self):
-        self.db_host = os.getenv("DB_HOST")
-        self.db_user = os.getenv("DB_USER")
-        self.db_password = os.getenv("DB_PASSWORD")
-        self.db_name = os.getenv("DB_NAME")
-
     def get_db_connection(self):
-        return mysql.connector.connect(
-            host=self.db_host,
-            user=self.db_user,
-            password=self.db_password,
-            database=self.db_name,
-            autocommit=False,
-            connection_timeout=5,
-        )
+        return create_db_connection()
 
     def create_session(self, id_usuario=None):
         conn = self.get_db_connection()
