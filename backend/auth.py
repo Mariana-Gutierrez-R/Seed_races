@@ -3,7 +3,11 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from database.mysql import get_db_connection
-from services.profile_service import asegurar_perfil_usuario
+from services.profile_service import (
+    asegurar_perfil_usuario,
+    serializar_perfil_usuario,
+    serializar_burbuja_usuario,
+)
 import re
 import secrets
 import hashlib
@@ -667,20 +671,27 @@ def obtener_perfil_usuario(id_usuario):
 
         conn.commit()
 
-        return jsonify({
-            "id_usuario": perfil["id_usuario"],
-            "nombre_usuario": perfil.get("nombre_usuario"),
-            "correo": perfil.get("correo"),
-            "foto_perfil": perfil.get("foto_perfil"),
-            "apodo": perfil.get("apodo") or perfil.get("nombre_usuario") or "Peep Player",
-            "avatar_key": perfil.get("avatar_key") or "maga",
-            "avatar_asset": f"assets/images/avatars/{perfil.get('avatar_key') or 'maga'}.png",
-            "pointer_key": perfil.get("pointer_key") or "puntero_clasico",
-            "exp_total": int(perfil.get("exp_total") or 0),
-            "peep_coins": int(perfil.get("peep_coins") or 0),
-            "fecha_creacion": str(perfil.get("fecha_creacion")),
-            "fecha_actualizacion": str(perfil.get("fecha_actualizacion")),
-        }), 200
+        return jsonify(serializar_perfil_usuario(perfil)), 200
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.get("/perfil/burbuja/<int:id_usuario>")
+def obtener_burbuja_usuario(id_usuario):
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True, buffered=True)
+
+    try:
+        perfil = asegurar_perfil_usuario(cur, id_usuario)
+
+        if not perfil:
+            return jsonify({"error": "Perfil no encontrado"}), 404
+
+        conn.commit()
+
+        return jsonify(serializar_burbuja_usuario(perfil)), 200
 
     finally:
         cur.close()

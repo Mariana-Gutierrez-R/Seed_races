@@ -86,4 +86,72 @@ def asegurar_perfil_usuario(cur, id_usuario):
     """, (id_usuario,))
 
     return cur.fetchone()
-    
+
+# ================== PROFILE RESPONSE HELPERS ==================
+def calcular_nivel_desde_exp(exp_total):
+    exp_total = int(exp_total or 0)
+    nivel_actual = (exp_total // 100) + 1
+    exp_inicio_nivel = (nivel_actual - 1) * 100
+    exp_siguiente_nivel = nivel_actual * 100
+    exp_en_nivel = exp_total - exp_inicio_nivel
+    progreso_nivel = exp_en_nivel / 100
+
+    return {
+        "nivel_actual": nivel_actual,
+        "exp_total": exp_total,
+        "exp_en_nivel": exp_en_nivel,
+        "exp_siguiente_nivel": exp_siguiente_nivel,
+        "progreso_nivel": progreso_nivel,
+    }
+
+
+def serializar_perfil_usuario(perfil):
+    if not perfil:
+        return None
+
+    avatar_key = perfil.get("avatar_key") or "maga"
+    pointer_key = perfil.get("pointer_key") or "puntero_clasico"
+    exp_total = int(perfil.get("exp_total") or 0)
+    peep_coins = int(perfil.get("peep_coins") or 0)
+    nivel = calcular_nivel_desde_exp(exp_total)
+
+    return {
+        "id_usuario": perfil["id_usuario"],
+        "nombre_usuario": perfil.get("nombre_usuario"),
+        "correo": perfil.get("correo"),
+        "foto_perfil": perfil.get("foto_perfil"),
+        "apodo": perfil.get("apodo") or perfil.get("nombre_usuario") or "Peep Player",
+        "avatar_key": avatar_key,
+        "avatar_asset": f"assets/images/avatars/{avatar_key}.png",
+        "pointer_key": pointer_key,
+        "pointer_asset": f"assets/images/pointers/{pointer_key}.png",
+        "exp_total": exp_total,
+        "peep_coins": peep_coins,
+        "nivel_actual": nivel["nivel_actual"],
+        "exp_en_nivel": nivel["exp_en_nivel"],
+        "exp_siguiente_nivel": nivel["exp_siguiente_nivel"],
+        "progreso_nivel": nivel["progreso_nivel"],
+        "fecha_creacion": str(perfil.get("fecha_creacion")),
+        "fecha_actualizacion": str(perfil.get("fecha_actualizacion")),
+    }
+
+
+def serializar_burbuja_usuario(perfil):
+    perfil_serializado = serializar_perfil_usuario(perfil)
+
+    if not perfil_serializado:
+        return None
+
+    return {
+        "id_usuario": perfil_serializado["id_usuario"],
+        "apodo": perfil_serializado["apodo"],
+        "avatar_key": perfil_serializado["avatar_key"],
+        "avatar_asset": perfil_serializado["avatar_asset"],
+        "nivel_actual": perfil_serializado["nivel_actual"],
+        "peep_coins": perfil_serializado["peep_coins"],
+        "exp_total": perfil_serializado["exp_total"],
+        "exp_en_nivel": perfil_serializado["exp_en_nivel"],
+        "exp_siguiente_nivel": perfil_serializado["exp_siguiente_nivel"],
+        "progreso_nivel": perfil_serializado["progreso_nivel"],
+    }
+
